@@ -19,10 +19,10 @@ class Answer(BaseModel):
 
 
 def test_an_outbox_line_refuses_a_field_nothing_declares() -> None:
-    """outbox 的一行多出一个字段时立即失败。
+    """A line in an outbox with one field too many fails immediately.
 
-    worker 读到的是文件，而一个被静默忽略的字段意味着调用方以为自己
-    交待了某件事，而执行那次调用的进程从来没有看到它。
+    What a worker reads is a file, and a field silently ignored means the caller believed it
+    had said something that the process running the call never saw.
     """
     with pytest.raises(ValidationError):
         Call.model_validate(
@@ -37,16 +37,17 @@ def test_an_outbox_line_refuses_a_field_nothing_declares() -> None:
 
 
 def test_a_declaration_defaults_to_read_only_and_a_shared_directory() -> None:
-    """默认权限是只读，而只读的调用可以共用一个目录。
+    """The default permission is read-only, and read-only calls can share a directory.
 
-    默认值就是并发行为：只读时同一个目录被几十次调用同时使用是安全的，
-    而默认可写会让第一个并发的函数声明静默地相互干扰。
+    The default is the concurrency behaviour: read-only makes one directory safe for dozens of
+    calls at once, while defaulting to writable has the first concurrent declaration silently
+    interfering with itself.
     """
     function = AiFunction(
         name="count_things",
         request=Request,
         returns=Answer,
-        instruction=Template(body="数一数 {path}。"),
+        instruction=Template(body="Count what is in {path}."),
         workspace=Workspace(directory=Path("/srv")),
         model=Model(name="DeepSeek-V4-pro"),
     )
@@ -55,17 +56,17 @@ def test_a_declaration_defaults_to_read_only_and_a_shared_directory() -> None:
 
 
 def test_a_concrete_declaration_fits_the_registry_table() -> None:
-    """一个具体的声明装得进 registry 那张表。
+    """One concrete declaration fits the registry's table.
 
-    mypy 检查这一行，而这是它唯一能检查到的地方：
-    泛型参数是不变的，所以一张 `AiFunction[BaseModel, BaseModel]` 的表
-    装不进任何真实的声明，而这件事只在有人真的往里装的时候才暴露。
+    mypy checks this line, and this is the only place it can: a generic argument is invariant,
+    so a table of `AiFunction[BaseModel, BaseModel]` holds no real declaration at all, and that
+    only comes out when somebody actually puts one in.
     """
     function = AiFunction(
         name="count_things",
         request=Request,
         returns=Answer,
-        instruction=Template(body="数一数 {path}。"),
+        instruction=Template(body="Count what is in {path}."),
         workspace=Workspace(directory=Path("/srv")),
         model=Model(name="DeepSeek-V4-pro"),
     )

@@ -13,10 +13,10 @@ class Answer(BaseModel):
 
 
 def test_returned_carries_the_declared_type_and_not_a_dict() -> None:
-    """`Return[O]` 校验嵌套的值，所以 `RETURNED` 意味着拿到了 `O` 是类型上的事实。
+    """`Return[O]` validates the nested value, so `RETURNED` meaning `O` is a fact about types.
 
-    泛型模型把参数只当注解、把嵌套的值留成 dict 是一种真实的失败方式，
-    而它只会在读那个值的地方崩溃。
+    A generic model treating its argument as an annotation only and leaving the nested value a
+    dict is a real way for this to fail, and it fails only where that value is read.
     """
     parsed = Return[Answer].model_validate(
         {
@@ -31,28 +31,29 @@ def test_returned_carries_the_declared_type_and_not_a_dict() -> None:
 
 
 def test_returned_without_a_value_is_refused_by_the_union() -> None:
-    """status 为 returned 而没有值的行读不进来。
+    """A line whose status is returned and which has no value does not read back in.
 
-    这是把三种结果写成带 discriminator 的联合所要买到的那一条性质。
-    一个 status 加三个可选字段的写法给不出它。
+    This is the one property that writing the three outcomes as a union with a discriminator
+    buys. One status beside three optional fields does not give it.
     """
     with pytest.raises(ValidationError):
         TypeAdapter(Outcome[Answer]).validate_python({"status": "returned"})
 
 
 def test_each_status_selects_exactly_one_branch() -> None:
-    """三种 status 各自只对应一支，所以读结论不需要先判断形状。"""
+    """Each status selects exactly one branch, so reading a conclusion asks no shape first."""
     adapter: TypeAdapter[Outcome[Answer]] = TypeAdapter(Outcome[Answer])
-    assert isinstance(adapter.validate_python({"status": "refused", "reason": "答不了"}), Refused)
+    refused = adapter.validate_python({"status": "refused", "reason": "there is nothing to count"})
+    assert isinstance(refused, Refused)
     failed = adapter.validate_python({"status": "failed", "fault": "crashed"})
     assert isinstance(failed, Failed)
     assert failed.fault is Fault.CRASHED
 
 
 def test_refused_is_not_reachable_as_a_fault() -> None:
-    """拒答不是一种故障，所以 `Failed` 装不下它。
+    """A refusal is not a fault, so `Failed` does not hold one.
 
-    两者合成一种，调用方就无法区分「这个输入没有答案」和「这次没跑起来」。
+    Merge the two and the caller cannot tell "this input has no answer" from "this never ran".
     """
     with pytest.raises(ValidationError):
         Failed.model_validate({"status": Status.FAILED, "fault": "refused"})

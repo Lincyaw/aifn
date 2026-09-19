@@ -15,11 +15,12 @@ from aifn.terms import CallId
 
 @dataclass(frozen=True, slots=True)
 class Handle[O: BaseModel]:
-    """一次已经发起的调用，加上读它结论所需要的类型。
+    """One call already issued, plus the type its conclusion needs to be read with.
 
-    调用方拿到的是这个句柄，此刻还没有值：写 outbox 就返回，
-    结论几分钟或者几小时之后才出现，而 `id` 此刻就是确定的。
-    它可以被写下来，下一个进程拿着它照样能读到结论。
+    This handle is what the caller gets, and it holds no value yet: the outbox is written and
+    the call returns, the conclusion appears minutes or hours later, and `id` is settled right
+    now. It can be written down, and the next process holding it reads the conclusion just the
+    same.
     """
 
     id: CallId
@@ -27,122 +28,128 @@ class Handle[O: BaseModel]:
     mailbox: Mailbox
 
     def poll(self) -> Return[O] | None:
-        """结论出来了没有，没有时返回空并且立即返回。
+        """Whether the conclusion is out, returning none and returning at once when it is not.
 
-        不阻塞，因为调用方发起了上千次调用，
-        在任何一次上阻塞都会让其余的结论无人处理。
+        It does not block, because a caller has issued a thousand calls and blocking on any one
+        of them leaves the other conclusions with nobody to handle them.
         """
         raise NotImplementedError
 
     def wait(self, timeout_s: float | None = None) -> Return[O]:
-        """等到有结论，或者等到超时时立即失败。
+        """Wait for a conclusion, failing immediately on timing out.
 
-        给那些只发起一次调用的程序用。
-        发起了一批的程序应当用 `Batch.settled`：
-        一批里最慢的一个决定全部的等待时间，而按完成顺序处理不会。
+        For programs that issue a single call. A program that issued a batch should use
+        `Batch.settled`: the slowest of a batch decides how long all of it is waited on, and
+        handling them as they finish does not.
         """
         raise NotImplementedError
 
 
 @dataclass(frozen=True, slots=True)
 class Stage[I: BaseModel, O: BaseModel]:
-    """一个 AI 函数，绑定到一个 mailbox 上。
+    """One AI function, bound to one mailbox.
 
-    把声明和 mailbox 绑在一起，是为了让发起一次调用不必每次都提两样东西；
-    而声明本身不知道 mailbox，所以同一个函数可以在几个 mailbox 里各跑一遍。
+    Binding a declaration to a mailbox is what keeps issuing a call from naming two things every
+    time; and a declaration itself knows no mailbox, so one function can run in several mailboxes
+    at once.
     """
 
     function: AiFunction[I, O]
     mailbox: Mailbox
 
     def issue(self, request: I, sample: int = 0) -> Handle[O]:
-        """发起一次调用，立即返回它的句柄。
+        """Issue one call and return its handle at once.
 
-        重复发起同一个请求得到同一个句柄而不会多跑一次：
-        `id` 是请求内容的摘要，而 outbox 里已经有那一行时 `issue` 什么也不做。
-        重跑一段中途崩溃的程序因此就是再运行一次它，不需要记住上次跑到哪。
+        Issuing the same request twice gets the same handle and does not run it twice: `id` is a
+        digest of the request, and `issue` does nothing when the outbox already holds that line.
+        Rerunning a program that crashed partway is therefore just running it again, with nothing
+        to remember about where it got to.
         """
         raise NotImplementedError
 
     def issue_all(self, requests: Iterable[I]) -> Batch[O]:
-        """一次发起一批，立即返回。
+        """Issue a batch at once and return immediately.
 
-        并发度不在这里：这里只是往 outbox 写几行，几行都很快，
-        而同时跑几个 agent 由 worker 的数量决定。
+        Concurrency is not here: this only writes a few lines into an outbox, which is quick
+        however many there are, and how many agents run at once is decided by the number of
+        workers.
         """
         raise NotImplementedError
 
 
 @dataclass(frozen=True, slots=True)
 class Batch[O: BaseModel]:
-    """一批已经发起的调用。
+    """A batch of calls already issued.
 
-    存在的理由是 `settled`：一批调用的结论出现的顺序和发起顺序无关，
-    而按发起顺序去读，会在第一个慢的上面把后面已经好了的全都堵住。
+    It exists for `settled`: the order in which a batch's conclusions appear has nothing to do
+    with the order they were issued in, and reading them in the order of issue has the first slow
+    one hold up every one behind it that is already done.
     """
 
     handles: tuple[Handle[O], ...]
 
     def settled(self, poll_every: timedelta = timedelta(seconds=5)) -> Iterator[Return[O]]:
-        """结论按出现的顺序产出，每个只产出一次，全部出来之后结束。
+        """Yield conclusions as they appear, each once, ending when all of them are out.
 
-        用轮询实现：状态在文件里，写 inbox 的进程和读它的进程之间
-        没有别的通道，而一个几小时的流程里每隔几秒看一次目录的代价可以忽略。
+        Implemented by polling: the state is in files, the process writing an inbox and the one
+        reading it share no other channel, and looking at a directory every few seconds over a run
+        of hours costs nothing worth counting.
         """
         raise NotImplementedError
 
     def returned(self) -> Iterator[Return[O]]:
-        """此刻已经有结论的那些，不等待。
+        """The ones that have a conclusion right now, without waiting.
 
-        给那些自己掌握循环的调用方用：
-        一个同时推进几个阶段的程序不能在任何一个阶段里等。
+        For the callers that run their own loop: a program advancing several stages at once cannot
+        wait inside any one of them.
         """
         raise NotImplementedError
 
     def pending(self) -> tuple[Handle[O], ...]:
-        """还没有结论的那些。"""
+        """The ones with no conclusion yet."""
         raise NotImplementedError
 
     def values(self, poll_every: timedelta = timedelta(seconds=5)) -> Iterator[O]:
-        """只要校验通过的值，拒答和故障跳过。
+        """Only the values that validated, skipping refusals and faults.
 
-        跳过它们，整批继续：一批调用里有几个答不了是正常的，
-        而让一次拒答中止整批会把其余几百个已经付过费的结论一起丢掉。
-        哪些被跳过了从 inbox 里读得到。
+        Skipping them and carrying on with the batch: a few calls in a batch being unanswerable is
+        ordinary, and letting one refusal end the batch throws away the several hundred other
+        conclusions that have already been paid for. Which ones were skipped can be read from the
+        inbox.
         """
         raise NotImplementedError
 
 
 @dataclass(frozen=True, slots=True)
 class Link[A: BaseModel, B: BaseModel]:
-    """上一个阶段的一个结论，怎么变成下一个阶段的请求。
+    """How one of the previous stage's conclusions becomes the next stage's requests.
 
-    一个结论可以变成零个、一个或者几个请求，所以是列表：
-    一次 scan 出四十个服务，下一个阶段就是四十次调用；
-    而一个拒答变成零个请求，流水线在那里自然收窄。
+    One conclusion can become zero, one or several requests, hence a list: one scan turning up
+    forty services makes forty calls in the next stage, while a refusal becomes zero requests and
+    the pipeline narrows there of its own accord.
     """
 
     adapt: Callable[[A], Sequence[B]]
     on: frozenset[Status] = frozenset({Status.RETURNED})
-    """哪些结论往下走。
+    """Which conclusions go downstream.
 
-    默认只有 `RETURNED`：把一个没有值的结论往下传，
-    下一个阶段就要为「上游没答上来」准备一个分支，而那不是它的问题。
+    `RETURNED` alone by default: pass a conclusion with no value on, and the next stage has to have
+    a branch for "upstream did not come up with one", which is not its problem.
     """
 
 
 @dataclass(frozen=True, slots=True)
 class Flow[A: BaseModel, B: BaseModel, C: BaseModel]:
-    """两个阶段接起来，上游出一个结论下游就能开始。
+    """Two stages joined up, the downstream one starting on each upstream conclusion.
 
-    不等上游全部完成：一个阶段几十次调用，每次几十分钟，
-    等它全部结束再开始下一个阶段，整个流程的时长就是各阶段时长之和，
-    而按结论推进时它接近其中最长的那一个。
+    It does not wait for all of upstream: with dozens of calls in a stage each taking dozens of
+    minutes, waiting for a stage to end before the next begins makes the whole run as long as the
+    sum of its stages, while advancing per conclusion makes it close to the longest one.
 
-    推进的方式是每次重新读一遍 mailbox，不在进程里记住已经处理过谁。
-    `Stage.issue` 对已经发起过的调用什么也不做，
-    所以「把上游每一个结论都发给下游」这件事重复执行是安全的，
-    而这正是崩溃之后接着跑所需要的性质。
+    Advancing means reading the mailbox again each time, with nothing remembered in the process
+    about who has been handled. `Stage.issue` does nothing for a call already issued, so "issue
+    every upstream conclusion downstream" is safe to run repeatedly, and that is exactly the
+    property resuming after a crash needs.
     """
 
     upstream: Batch[A]
@@ -150,32 +157,32 @@ class Flow[A: BaseModel, B: BaseModel, C: BaseModel]:
     link: Link[A, B]
 
     def advance(self) -> int:
-        """读一遍上游的结论，把该发起的下游调用发起，返回新发起了几个。
+        """Read upstream's conclusions once, issue what is due downstream, return how many are new.
 
-        不阻塞也不循环：一个同时推进几条流水线的程序要自己掌握循环，
-        而一个只有一条的程序就是反复调用它直到 `done` 为真。
+        It neither blocks nor loops: a program advancing several pipelines has to run its own loop,
+        and a program with one pipeline calls this until `done` is true.
         """
         raise NotImplementedError
 
     def done(self) -> bool:
-        """上游全部有了结论，并且它们该发起的下游调用都已经发起。"""
+        """All of upstream has a conclusion, and every downstream call they call for is issued."""
         raise NotImplementedError
 
     def issued(self) -> Batch[C]:
-        """到此刻为止下游已经发起的全部调用。
+        """Every downstream call issued up to this moment.
 
-        每次重新从上游的结论算出来，不在这个对象里累积：
-        进程会崩溃，而累积在进程里的那份记录崩溃之后就没有了。
+        Computed again from upstream's conclusions each time rather than accumulated in this
+        object: a process crashes, and a record accumulated inside one is gone when it does.
         """
         raise NotImplementedError
 
 
 class Advancing(Protocol):
-    """能被反复推进直到完成的东西。
+    """Something that can be advanced repeatedly until it is done.
 
-    写成协议而没有直接收 `Flow`，因为一条流水线上各段的类型两两不同，
-    而 `drain` 只需要推进和问一句完成了没有，不需要知道那些类型。
-    要求它知道，就只能把类型参数填成 `BaseModel`，那是一句谎话。
+    A protocol rather than taking a `Flow` directly, because the stages of one pipeline have
+    pairwise different types, while `drain` needs only to advance and to ask whether it is done. To
+    require that it know those types is to fill the arguments in as `BaseModel`, which is a lie.
     """
 
     def advance(self) -> int: ...
@@ -184,9 +191,9 @@ class Advancing(Protocol):
 
 
 def drain(flows: Sequence[Advancing], poll_every: timedelta) -> None:
-    """反复推进这些流水线，直到全部完成。
+    """Advance these pipelines repeatedly until all of them are done.
 
-    给最常见的那种调用方用：它只要整条流水线跑完的结果，
-    自己不需要在中途做别的事。
+    For the most common caller: it wants the result of a whole pipeline and has nothing else to do
+    in the meantime.
     """
     raise NotImplementedError

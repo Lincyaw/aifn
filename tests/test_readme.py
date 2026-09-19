@@ -41,10 +41,10 @@ class Timeouts(BaseModel):
 def pipeline_of(
     found: Batch[Services], inspect: Stage[Service, Timeouts]
 ) -> Flow[Services, Service, Timeouts]:
-    """README 那条流水线的接法，三个类型参数全部由推断得出。
+    """The README's pipeline as it is joined, with all three arguments inferred.
 
-    单独一个有返回类型的函数，因为这是 mypy 唯一会去核对
-    `Link.adapt` 的返回元素类型和 `downstream` 的输入类型是否相符的写法。
+    A separate function with a return type, because this is the only spelling under which mypy
+    checks that `Link.adapt`'s element type matches `downstream`'s input type.
     """
     return Flow(
         upstream=found,
@@ -58,10 +58,10 @@ def pipeline_of(
 
 
 def test_the_readme_pipeline_type_checks() -> None:
-    """README 那个例子是这个库的主要说明，所以它必须能通过 mypy。
+    """The README's example is this library's main explanation, so mypy has to accept it.
 
-    一个类型上讲不通的例子会让每一个照着写的人都撞上同一个错误，
-    而 docstring 里的例子没有任何检查会碰到它。
+    An example that does not hold up in types has everybody who copies it hitting the same
+    error, and no check reaches an example inside a docstring.
     """
     workspace = Workspace(directory=Path("/srv/target"), access=Access.READ_ONLY)
     model = Model(name="DeepSeek-V4-pro")
@@ -70,7 +70,7 @@ def test_the_readme_pipeline_type_checks() -> None:
         name="list_services",
         request=Repository,
         returns=Services,
-        instruction=Template(body="列出 {path} 这个仓库里的全部服务。"),
+        instruction=Template(body="List every service in the repository at {path}."),
         workspace=workspace,
         model=model,
     )
@@ -78,7 +78,9 @@ def test_the_readme_pipeline_type_checks() -> None:
         name="read_timeouts",
         request=Service,
         returns=Timeouts,
-        instruction=Template(body="在 {repository} 里找出 {name} 这个服务的全部超时配置。"),
+        instruction=Template(
+            body="In {repository}, find every timeout the {name} service configures."
+        ),
         workspace=workspace,
         model=model,
         timeout_s=600.0,

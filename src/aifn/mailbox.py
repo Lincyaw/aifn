@@ -20,11 +20,12 @@ DIRECTORIES: Final = (OUTBOX, INBOX, CLAIMS, EVENTS, SCRATCH)
 
 
 class Claim(BaseModel):
-    """一个 worker 对一次调用的租约。
+    """One worker's lease on one call.
 
-    带过期时间，不只是一个占位标记：被中止的 worker 没有机会清理自己的租约，
-    而一个永不过期的标记会让那次调用永远没有人认领。
-    到期就能被抢走，这是崩溃之后未完成的调用重新回到队列的唯一途径。
+    It carries an expiry rather than being only a marker: a killed worker has no chance to
+    clean its own lease up, and a marker that never expires leaves that call with nobody to
+    claim it. Expiring means it can be taken, and that is the only route by which an
+    unfinished call returns to the queue after a crash.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -36,97 +37,100 @@ class Claim(BaseModel):
     attempt: int = 0
 
     def expired(self, now: datetime) -> bool:
-        """这个租约是否已经可以被别人抢走。"""
+        """Whether this lease can already be taken by somebody else."""
         raise NotImplementedError
 
 
 @dataclass(frozen=True, slots=True)
 class Mailbox:
-    """一个目录，调用方和 worker 只在这里相遇。
+    """A directory, and the only place the caller and the workers meet.
 
-    状态全在文件里而不在进程里，因为一个跑几小时的流程中途会崩溃：
-    发起调用的进程不是执行它的进程，读结果的进程也不是写结果的那个。
-    调用方写 outbox 就返回，worker 认领、执行、写 inbox，
-    除此以外两侧之间没有任何通道。
+    The state is entirely in files rather than in a process, because a run that goes for hours
+    will crash partway: the process that issues a call is not the one that runs it, and the one
+    that reads a result is not the one that wrote it. The caller writes the outbox and returns,
+    a worker claims, runs and writes the inbox, and there is no other channel between the two.
     """
 
     root: Path
 
     def prepare(self) -> None:
-        """把这些目录建出来，已经存在时什么也不做。"""
+        """Create these directories, doing nothing where they already are."""
         raise NotImplementedError
 
     def issue(self, call: Call) -> bool:
-        """把一次调用写进 outbox；它已经在那里或者已经有结论时返回假。
+        """Write one call into the outbox; false when it is already there or already concluded.
 
-        返回布尔值，不静默覆盖：重复发起同一次调用是流程重跑的正常情形，
-        而覆盖一个正在被执行的调用会让它的 worker 写回一份对不上的结论。
+        A boolean rather than a silent overwrite: reissuing the same call is the ordinary case
+        of a rerun, and overwriting a call that is being run has its worker write back a
+        conclusion that does not match it.
         """
         raise NotImplementedError
 
     def pending(self) -> Iterator[Call]:
-        """还没有结论、也没有被有效租约占住的调用，按发出时刻排序。
+        """The calls with no conclusion and no live lease, in the order they were issued.
 
-        按时刻排序，不按文件名：文件名是内容摘要，它的顺序和发起顺序没有关系，
-        而一个先发起的调用先被执行，是调用方唯一能指望的排队行为。
+        By the moment they were issued rather than by file name: a file name is a digest of the
+        content, its order has nothing to do with the order of issue, and a call issued earlier
+        being run earlier is the only queueing behaviour a caller can count on.
         """
         raise NotImplementedError
 
     def claim(self, call: CallId, worker: WorkerId, lease: timedelta) -> Claim | None:
-        """抢下一次调用的租约，抢不到时返回空。
+        """Take one call's lease, or none when it cannot be taken.
 
-        靠 `O_EXCL` 创建租约文件来互斥，所以「同一个调用不会被两个 worker 认领」
-        这件事由文件系统保证，不依赖任何一个进程活着。
-        过期的租约在这里被接管，而接管会把 `attempt` 加一：
-        一次尝试即使是被中止的，它也已经花掉了。
+        Mutual exclusion is a lease file created with `O_EXCL`, so "one call is never claimed
+        by two workers" is guaranteed by the filesystem and does not depend on any process
+        being alive. An expired lease is taken over here, and taking over adds one to
+        `attempt`: an attempt that was cut off has still been spent.
         """
         raise NotImplementedError
 
     def renew(self, claim: Claim, lease: timedelta) -> Claim:
-        """延长租约。
+        """Extend a lease.
 
-        租约必须比一次调用的时限短得多，否则一个被中止的 worker 会把它的调用
-        扣住几个小时；而短租约需要执行过程中续租，不然一次正常的长调用
-        会被另一个 worker 当成中止的抢走。
+        A lease has to be far shorter than one call's limit, or a killed worker holds its call
+        for hours; and a short lease needs renewing while the call runs, or one ordinary long
+        call is taken over by another worker that read it as killed.
         """
         raise NotImplementedError
 
     def release(self, claim: Claim) -> None:
-        """放弃租约而不写结论。
+        """Give up a lease without writing a conclusion.
 
-        用在这次尝试失败但调用还要再试的时候：
-        写一份 `FAILED` 会让调用方以为已经有结论了。
+        For when this attempt failed and the call is to be tried again: writing a `FAILED` would
+        have the caller believe there is a conclusion already.
         """
         raise NotImplementedError
 
     def deliver(self, result: AnyReturn, claim: Claim) -> None:
-        """写下结论并交还租约，两件事一起完成。
+        """Write the conclusion down and give the lease back, as one act.
 
-        先写 inbox 再删租约：反过来的顺序留出一个两个 worker 都认为
-        自己该执行这次调用的间隙。
+        The inbox first and the lease second: the other order leaves a gap in which two workers
+        both believe this call is theirs to run.
         """
         raise NotImplementedError
 
     def returned[O: BaseModel](self, call: CallId, returns: type[O]) -> Return[O] | None:
-        """读一次调用的结论，还没有时返回空。
+        """Read one call's conclusion, or none when there is not one yet.
 
-        要传 `returns`：inbox 里是 JSON，而它该校验成哪个模型，
-        只有拿着声明的调用方知道。
+        `returns` has to be passed: the inbox holds JSON, and which model it validates as is
+        known only to the caller holding the declaration.
         """
         raise NotImplementedError
 
     def record(self, call: CallId, attempt: int, events: Sequence[Event]) -> Path:
-        """把一次尝试的完整事件流写下来，返回写到哪里。
+        """Write one attempt's whole transcript down, and say where it went.
 
-        原样写下整份，不只留提取出来的答案：一次尝试为什么没答上来
-        只能从事件流里看出来，而重跑一次要花掉同样的时间和费用。
+        The whole thing verbatim rather than only the extracted answer: why an attempt did not
+        come up with one can only be seen in the transcript, and running it again costs the same
+        time and the same money.
         """
         raise NotImplementedError
 
     def events(self, call: CallId, attempt: int) -> Sequence[Event]:
-        """读回某一次尝试的事件流。
+        """Read one attempt's transcript back.
 
-        存在的理由是让 `extract` 可以脱离模型被测试：
-        录下来的事件流是它唯一的输入。
+        It exists so `extract` can be tested without a model: a recorded transcript is its only
+        input.
         """
         raise NotImplementedError

@@ -13,12 +13,12 @@ from aifn.terms import WorkerId
 
 @dataclass(frozen=True, slots=True)
 class Worker:
-    """认领 outbox 里的调用，跑完写 inbox。
+    """Claims the calls in an outbox, runs them, and writes the inbox.
 
-    并发度由 worker 的数量决定而不由调用方决定：
-    调用方可以一次发起上千次调用，而同时能跑几个 agent
-    取决于机器和额度，这两件事不该由同一个地方决定。
-    一个 worker 一次跑一个调用，多开几个就是多几路并发。
+    How many run at once is decided by the number of workers rather than by the caller: a
+    caller can issue a thousand calls, while how many agents can run at once depends on the
+    machine and the quota, and those two things should not be decided in one place. One worker
+    runs one call at a time, and more of them is more concurrency.
     """
 
     mailbox: Mailbox
@@ -28,54 +28,56 @@ class Worker:
     id: WorkerId
 
     def work(self, budget: int | None = None) -> int:
-        """认领并执行调用，直到没有待认领的为止，返回完成了几个。
+        """Claim and run calls until none are left to claim, and return how many were finished.
 
-        `budget` 限制这次最多做几个：一个长期驻留的 worker 要能被换掉
-        而不中止手上的调用，做完约定的个数就退出是唯一不会丢掉进度的换法。
+        `budget` bounds how many this does: a long-lived worker has to be replaceable without
+        cutting off the call in its hands, and exiting after an agreed number is the only
+        replacement that loses no progress.
         """
         raise NotImplementedError
 
     def take_one(self) -> AnyReturn | None:
-        """认领一个调用并把它做到有结论，没有可认领的时返回空。
+        """Claim one call and carry it to a conclusion, or none when there is nothing to claim.
 
-        单独一个方法，因为它是整个库里唯一一个既写 inbox 也跑模型的地方，
-        测试要能只跑它一次。
+        A method of its own, because it is the library's one place that both writes the inbox and
+        runs a model, and a test has to be able to run it exactly once.
         """
         raise NotImplementedError
 
     def execute(self, call: Call, claim: Claim) -> AnyOutcome:
-        """把一次调用做到有结论，该重试就重试。
+        """Carry one call to a conclusion, retrying where retrying is called for.
 
-        租约在这里续，因为只有这里知道一次尝试还在跑：
-        续租放在 `work` 里，它就只能在两次调用之间续，
-        而一次调用本身就比租约长。
+        The lease is renewed here, because only here is it known that an attempt is still
+        running: renewal inside `work` could only happen between calls, and one call is itself
+        longer than a lease.
         """
         raise NotImplementedError
 
     def attempt(
         self, call: Call, index: int, corrections: Corrections
     ) -> tuple[Attempt, AnyOutcome | None]:
-        """跑一次尝试。
+        """Run one attempt.
 
-        返回两样：这次尝试的记录，以及一个结论或者空。
-        空的意思是这次没有结论而调用还没有完结，由 `execute` 决定还要不要再试。
-        `REFUSED` 在这里就是结论：拒答是一个回答，不是一次失败。
+        Two things come back: this attempt's record, and either a conclusion or none. None means
+        this attempt reached no conclusion and the call is not settled, leaving `execute` to
+        decide whether to try again. `REFUSED` is a conclusion here: a refusal is an answer, not
+        a failure.
         """
         raise NotImplementedError
 
     def session(self, call: Call, index: int, corrections: Corrections, directory: Path) -> Session:
-        """一次尝试的会话输入。
+        """One attempt's session input.
 
-        每次尝试一个新的 session id：同一个 id 续接同一段持久对话，
-        复用它会让重试带着上一次被拒绝的答案继续，
-        而重试的全部意义在于重新回答一次。
+        A new session id per attempt: the same id continues the same durable conversation, so
+        reusing it has a retry continuing from the answer that was just rejected, while the whole
+        point of a retry is to answer again.
         """
         raise NotImplementedError
 
     def read(self, call: Call, transcript: Transcript) -> AnyOutcome:
-        """从事件流读出结论，包括把答案校验成声明的输出类型。
+        """Read the conclusion out of a transcript, validation into the output type included.
 
-        纯函数：给它一份录下来的事件流就能测，
-        而「哪一次工具调用算被接受的答案」这个判断值得被测。
+        A pure function: a recorded transcript is enough to test it, and "which tool call counts
+        as the accepted answer" is a judgment worth testing.
         """
         raise NotImplementedError

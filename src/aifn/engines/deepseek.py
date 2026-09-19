@@ -8,76 +8,93 @@ from typing import Final
 from aifn.engine import Session, Transcript
 
 BUNDLE_NAME: Final = "@aifn/dsh-aifn-harness"
-"""dsh bundle 的包名。
+"""The dsh bundle's package name.
 
-bundle 按名字注册 submit 工具，Python 这一侧按同一个名字要求 profile 里有它。
+The bundle holds the mechanism for answering one call and knows no AI function's
+name, so this side asks the profile for it by this name and nothing else.
 """
 
-PROFILE: Final = "sdk"
-"""用哪个 profile。
+BUNDLE_DIR: Final = Path(__file__).resolve().parents[3] / "harness" / "aifn-harness"
+"""Where that bundle's source is, which is what a profile is installed from."""
 
-以 base 为底。
-`sdk-minimal` 固定 `danger-full-access` 并且不挂载任何限制，
-一次调用就能读写运行时够得到的任何地方，
-而 `Access` 声明的权限只有在 base 的沙箱规则下才有意义。
+PROFILE: Final = "sdk"
+"""Which profile to boot.
+
+Backed by base, for its sandbox rows. `sdk-minimal` pins `danger-full-access` and
+mounts nothing that confines a session, so a call there reads and writes anywhere
+the runtime reaches, while the permission an `Access` declares only means something
+under base's own rules.
 """
 
 STAMP: Final = ".aifn-bundle"
-"""装进 profile 的那份 bundle 的摘要，放在它的 manifest 旁边。
+"""A digest of the bundle the profile was installed from, beside its manifest.
 
-bundle 是复制进去的，所以编辑过的 schema 要重装一次才生效。
-不记这个摘要时，装进去的和这一侧现在的不一致是静默的：
-agent 按装进去的那份回答，这一侧用另一份去校验，整个流程跑完才发现。
+The bundle is copied in, so an edit reaches a session only after a reinstall. With
+no digest recorded, a profile holding a different bundle than this source tree is
+silent in the worst way: the agent answers the mechanism it was installed with,
+and the run is spent finding out.
+"""
+
+PATCHES: Final = "aifn-patches"
+"""Where under the dsh home one call's layer is written.
+
+In the harness home rather than beside the mailbox: the layer is what this launch
+tells the runtime, its lifetime is the session, and a mailbox is the record of what
+the calls themselves were.
 """
 
 
 @dataclass(frozen=True, slots=True)
 class DeepSeekEngine:
-    """用 DeepSeek Harness 的 Python SDK 跑一次会话。
+    """Run one session with DeepSeek Harness's Python SDK.
 
-    一次调用一个 session，一个 session 一次 `harness.run`：
-    同一个 id 续接同一段持久对话，所以第二次调用复用同一个 id
-    会带着第一次的工具和历史回答。
+    One call is one session and one session is one `harness.run`: the same id
+    continues the same durable conversation, so a second call reusing an id would
+    arrive with the first call's tools and answers already in its history.
     """
 
     dsh_home: Path
     env: Mapping[str, str] = field(default_factory=dict)
-    """传给运行时的环境变量。
+    """Environment variables handed to the runtime.
 
-    `DSH_PERMISSION_MODE` 不在这里：它来自每个函数声明的 `Access`，
-    而这份 env 是整个 engine 共用的凭据和地址。
+    `DSH_PERMISSION_MODE` is not among them: it comes from each function's declared
+    `Access`, while this map is the credentials and endpoints one engine shares
+    across every call it runs.
     """
 
     def run(self, session: Session) -> Transcript:
-        """跑一次会话。
+        """Run one session.
 
-        SDK 的 `run` 是同步的，所以这个方法阻塞到会话结束，
-        并发由几个 worker 各跑一份 engine 来实现。
+        The tools reach the runtime as a `--patch` layer written for this session
+        alone, because the submit tool's schema comes from the output type and the
+        installed bundle holds no schema of its own.
+
+        The SDK's `run` is synchronous, so this blocks until the session ends, and
+        concurrency is several workers each running their own engine.
         """
         raise NotImplementedError
 
     def prepare(self) -> None:
-        """确认 profile 里装着当前这一份 bundle，不是时立即失败。"""
+        """Fail unless the profile holds the bundle this source tree currently is."""
         raise NotImplementedError
 
 
-def install_bundle(dsh_home: Path, bundle: Path, *, reinstall: bool = False) -> bool:
-    """把 bundle 装进 profile，已经是当前这一份时返回假。
+def install_bundle(dsh_home: Path, *, reinstall: bool = False) -> bool:
+    """Install the bundle into the profile; false when it is already the current one.
 
-    用 `file:` 这种 spec。
-    pnpm 会把 bundle 复制进 profile 的包目录，
-    而那里才是它的 peer import 能解析到的位置，`link:` 做不到这一点。
-    复制意味着一次编辑要重装一遍才到得了会话，
-    而对一个没有变化的 spec 执行 `add` 什么也不做，所以重装要先移除。
+    With a `file:` spec. pnpm copies the bundle into the profile's package tree,
+    which is where its peer imports resolve from and what `link:` cannot give it.
+    The copy means an edit reaches a session only after reinstalling, and `add` on
+    an unchanged spec does nothing, so a reinstall removes first.
     """
     raise NotImplementedError
 
 
-def require_bundle(dsh_home: Path, bundle: Path) -> None:
-    """装了没有、是不是当前这一份，两个问题一起回答并给出确切的修复命令。"""
+def require_bundle(dsh_home: Path) -> None:
+    """Answer installed and current together, with the exact command that fixes either."""
     raise NotImplementedError
 
 
-def fingerprint(bundle: Path) -> str:
-    """bundle 现在是什么，覆盖一次会话读到的每个文件。"""
+def fingerprint() -> str:
+    """What the bundle is now, over every file a session reads."""
     raise NotImplementedError

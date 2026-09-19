@@ -8,26 +8,26 @@ from aifn.engine import Session, Transcript
 
 @dataclass(frozen=True, slots=True)
 class ReplayEngine:
-    """从录下来的事件流里回答，不跑模型。
+    """Answers out of recorded transcripts, without running a model.
 
-    存在的理由是它让整个执行路径可以被测试：
-    租约、重试、校验、拒答和「没有回答」的区分，都是这个库要说对的判断，
-    而每测一次都花掉几十分钟和一次模型调用，这些判断就测不到。
-    录下来的事件流是真实的模型输出，所以这不是伪造的数据。
+    It exists because it makes the whole execution path testable: leases, retries, validation,
+    and telling a refusal from "no answer" are the judgments this library has to get right, and
+    they are untestable when every test costs dozens of minutes and one model call. A recorded
+    transcript is real model output, so this is not fabricated data.
     """
 
     directory: Path
-    """`Mailbox.record` 写下的那个 events 目录。"""
+    """The events directory `Mailbox.record` wrote."""
 
     def run(self, session: Session) -> Transcript:
-        """交回这个 session 对应的那份录下来的事件流，没有录过时立即失败。
+        """Hand back the recorded transcript for this session, failing when there is none.
 
-        没有录过时立即失败，不返回一份空的：一份空的事件流会被读成
-        「agent 没有回答」，于是一个缺失的录制会表现为一次模型行为，
-        而那是测试里最难查的一种结果。
+        Failing immediately rather than returning an empty one: an empty transcript is read as
+        "the agent did not answer", so a missing recording would present itself as a model
+        behaviour, which is the hardest kind of result to track down in a test.
         """
         raise NotImplementedError
 
     def prepare(self) -> None:
-        """确认录制目录存在。"""
+        """Confirm the recording directory is there."""
         raise NotImplementedError

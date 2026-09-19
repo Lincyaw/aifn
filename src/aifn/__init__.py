@@ -23,8 +23,18 @@ from aifn.declare import (
 from aifn.engine import Engine, Session, Transcript
 from aifn.extract import Submitted, accepted
 from aifn.mailbox import Claim, Mailbox
+from aifn.patch import Row, layer
 from aifn.policy import Corrections, Policy
-from aifn.submit import Refusal, bundle, parameters, refuse_tool, submit_tool
+from aifn.submit import (
+    Refusal,
+    Schema,
+    Tools,
+    Untranslatable,
+    bundle,
+    parameters,
+    refuse_tool,
+    submit_tool,
+)
 from aifn.terms import CallId, Event, FunctionName, SessionId, WorkerId
 from aifn.worker import Worker
 
@@ -56,13 +66,17 @@ __all__ = [
     "Registry",
     "Return",
     "Returned",
+    "Row",
+    "Schema",
     "Session",
     "SessionId",
     "Stage",
     "Status",
     "Submitted",
     "Template",
+    "Tools",
     "Transcript",
+    "Untranslatable",
     "Worker",
     "WorkerId",
     "Workspace",
@@ -70,6 +84,7 @@ __all__ = [
     "bundle",
     "drain",
     "identity",
+    "layer",
     "parameters",
     "refuse_tool",
     "submit_tool",

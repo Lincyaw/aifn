@@ -5,14 +5,16 @@ description = "AI functions: a declared signature, an agent call for a body, an 
 readme = "README.md"
 requires-python = ">=3.12,<3.15"
 dependencies = [
-    # 声明的输出类型就是 Pydantic 模型，outbox 和 inbox 的每一行也是。
-    # 校验和序列化是同一件事，所以这是唯一的运行时依赖。
+    # A declared output type is a Pydantic model, and so is every line of an outbox
+    # and an inbox. Validation and serialization are the same act, which makes this
+    # the one runtime dependency.
     "pydantic>=2.12",
 ]
 
 [project.optional-dependencies]
-# engine 是可替换的一层，所以 SDK 不是核心依赖：
-# 只有 aifn.engines.deepseek 读它，而一次重放读录下来的事件流，不需要它。
+# An engine is a replaceable layer, so the SDK is not a core dependency: only
+# aifn.engines.deepseek reads it, and a replay reads a recorded transcript, which
+# needs nothing of it.
 deepseek = [
     "deepseek-harness-sdk>=0.1.2rc1",
 ]
@@ -31,8 +33,9 @@ dev = [
     "ruff>=0.16.2,<0.17",
 ]
 
-# 写在这里，因为这台机器配置的全局镜像对这几个包返回 403，
-# 而 uv 把镜像的失败报成「requirements are unsatisfiable」，看上去像是版本约束解不开。
+# Written here because the mirror this machine is configured with answers 403 for
+# these packages, and uv reports a mirror's failure as "requirements are
+# unsatisfiable", which reads like a version constraint that will not solve.
 [[tool.uv.index]]
 name = "pypi"
 url = "https://pypi.org/simple/"
@@ -45,13 +48,15 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "TID"]
 
-# 一次调用的执行路径不许知道自己跑在哪个 harness 上：
-# engine 是协议，aifn.engines 是它的一个实现，只有组装的人能同时读到两者。
+# A call's execution path may not know which harness it is running on: an engine is
+# a protocol, aifn.engines is one implementation of it, and only whoever assembles
+# the two gets to read both.
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "aifn.engines".msg = "a worker holds an Engine, not one engine's name"
 
 [tool.ruff.lint.per-file-ignores]
-# engines 的 __init__ 就是那个包自己，它当然读得到自己的模块。
+# The engines package's __init__ is that package itself, so of course it reads its
+# own modules.
 "src/aifn/engines/__init__.py" = ["TID251"]
 "tests/*" = ["TID251"]
 
@@ -60,9 +65,10 @@ python_version = "3.12"
 strict = true
 files = ["src", "tests"]
 
-# SDK 不带 py.typed，而这是唯一读它的模块。
+# The SDK ships no py.typed, and only this module and the bundle's loadability test
+# read it.
 [[tool.mypy.overrides]]
-module = ["deepseek_harness.*"]
+module = ["deepseek_harness.*", "deepseek_harness_runtime.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

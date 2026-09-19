@@ -12,11 +12,12 @@ from aifn.terms import CallId, FunctionName
 
 
 class Access(StrEnum):
-    """agent 在工作目录里能做什么。
+    """What the agent may do in its working directory.
 
-    一个只读的调用不可能改坏目标，所以并发多少次都互不影响；
-    一个可写的调用会留下痕迹，因此它必须拿到自己的一份目录。
-    权限因此不只是一条安全规则，它决定了同一个目录能不能被两次调用同时使用。
+    A read-only call cannot break the target, so any number of them run side by side
+    without affecting each other; a writable call leaves traces, so it has to be given a
+    directory of its own. The permission is therefore not only a safety rule, it decides
+    whether one directory can serve two calls at once.
     """
 
     READ_ONLY = "read-only"
@@ -25,36 +26,40 @@ class Access(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class Workspace:
-    """agent 跑在哪个目录里，以及它在那里能做什么。
+    """Which directory the agent runs in, and what it may do there.
 
-    prompt 决定 agent 被问了什么，工作目录决定它能看到什么，
-    而后者往往比前者更能左右答案，所以它是声明的一部分，不是 worker 的配置。
+    A prompt decides what the agent was asked, a working directory decides what it can see,
+    and the second often sways an answer more than the first, so it belongs to the
+    declaration rather than to a worker's configuration.
     """
 
     directory: Path
     access: Access = Access.READ_ONLY
     private: bool = False
-    """每次调用是否要拿到自己的一份目录副本。
+    """Whether each call gets a copy of the directory to itself.
 
-    可写且并发的调用共用一个目录时，一次调用会读到另一次写下的中间状态，
-    而这种干扰在结果里看不出来，只会让答案无法解释。
+    When writable concurrent calls share one directory, one call reads the half-written
+    state another left, and that interference does not show up in the results, it only
+    makes the answers impossible to explain.
     """
 
     def materialize(self, call: CallId, scratch: Path) -> Path:
-        """给一次调用准备好它实际使用的目录，返回那个路径。
+        """Prepare the directory one call actually uses, and return that path.
 
-        声明里的目录是一个意图，worker 要的是一个此刻存在的路径：
-        `private` 为假时两者相同，为真时这里复制一份，而复制的代价只有 worker 付得起。
+        The directory in the declaration is an intention while a worker needs a path that
+        exists right now: with `private` false the two are the same, and with it true this
+        copies one, which is a cost only a worker can pay.
         """
         raise NotImplementedError
 
 
 @dataclass(frozen=True, slots=True)
 class Model:
-    """用哪个模型回答，以及一次回答能写多长。
+    """Which model answers, and how much one answer may be.
 
-    同一个 AI 函数换一个模型就是换一个实现，而输入输出类型不变，
-    所以模型是声明里可以单独替换的一项。
+    Swapping the model of an AI function swaps its implementation while its input and
+    output types hold, so the model is the one item of a declaration that can be replaced
+    on its own.
     """
 
     name: str
@@ -64,30 +69,32 @@ class Model:
 
 
 class Instruction[I: BaseModel](Protocol):
-    """把一个请求渲染成 agent 读到的那段文字。
+    """How a request becomes the text the agent reads.
 
-    这是整个库里唯一决定回答质量的地方，所以它是一个可以单独替换和单独测试的对象：
-    渲染不碰网络也不碰 harness，给它一个请求就能看到 agent 会读到什么。
+    This is the only place in the library that decides the quality of an answer, so it is
+    an object that can be replaced and tested on its own: rendering touches neither the
+    network nor the harness, and one request is enough to see what an agent would read.
     """
 
     def render(self, request: I, rejected: Sequence[str]) -> str:
-        """一次调用的全部 prompt，`rejected` 是此前几次尝试为什么没被接受。
+        """One call's whole prompt, `rejected` being why the earlier attempts were not accepted.
 
-        `rejected` 没有默认值：一次会话结束后进程就退出了，
-        上一次尝试的校验错误只有通过下一次的 prompt 才能到达 agent，
-        而一个可以忽略这个参数的渲染器就是一个永远不会自我纠正的渲染器。
+        `rejected` has no default: a session ends and its process exits, so the last
+        attempt's validation error reaches the agent only through the next attempt's
+        prompt, and a renderer that may ignore this argument is one that never corrects
+        itself.
         """
         ...
 
 
 @dataclass(frozen=True, slots=True)
 class AiFunction[I: BaseModel, O: BaseModel]:
-    """一个签名像普通函数、实现是一次 agent 调用的函数。
+    """A function whose signature is like any other and whose body is one agent call.
 
-    它把两侧固定下来：调用方看到的是 `request` 和 `returns` 两个类型，
-    worker 看到的是渲染方式、工作目录、模型和超时。
-    两侧之间没有别的约定，所以调用方不需要知道 agent 怎么被问，
-    worker 也不需要知道结果会被谁读。
+    It fixes both sides down: the caller sees the two types `request` and `returns`, and
+    the worker sees how to render, which directory, which model and which timeout. There is
+    nothing else agreed between the two, so the caller does not have to know how the agent
+    is asked, and the worker does not have to know who will read the result.
     """
 
     name: FunctionName
@@ -97,62 +104,68 @@ class AiFunction[I: BaseModel, O: BaseModel]:
     workspace: Workspace
     model: Model
     timeout_s: float = 1800.0
-    """一次尝试等多久。
+    """How long one attempt is given.
 
-    从秒到小时都是正常的，所以这个值由函数自己声明：
-    一个读几十个服务的调用和一个读一个文件的调用，用同一个超时只能取其中更长的那个。
+    Seconds through to hours are all ordinary, which is why the function declares this
+    itself: a call that reads dozens of services and one that reads a single file can only
+    share a timeout by taking the longer of the two.
     """
     attempts: int = 2
-    """同一个调用最多尝试几次。
+    """How many times one call is tried at most.
 
-    每次尝试都是一次完整的模型调用，代价不可忽略，
-    所以重试次数是函数自己的选择，而哪些故障值得重试由 `Policy` 决定。
+    Every attempt is a whole model call and the cost is not negligible, so the number of
+    retries is the function's own choice, while which faults are worth retrying is
+    `Policy`'s.
     """
 
 
 @dataclass(frozen=True, slots=True)
 class Registry:
-    """名字到声明的映射。
+    """The map from names to declarations.
 
-    outbox 里存的是函数名，worker 要靠名字找回声明才能渲染和校验，
-    所以跨进程传递一个 AI 函数的唯一方式是它的名字加上两侧共享的这张表。
+    What the outbox holds is a function's name, and a worker has to find the declaration by
+    that name before it can render or validate, so a name plus this table shared by both
+    sides is the only way an AI function crosses a process boundary.
     """
 
     functions: dict[FunctionName, AiFunction[Any, Any]]
 
     def declare[I: BaseModel, O: BaseModel](self, function: AiFunction[I, O]) -> None:
-        """登记一个声明，名字重复时立即失败。
+        """Record one declaration, failing immediately on a name already taken.
 
-        两个不同的声明共用一个名字，意味着 worker 会用其中一个的输出类型
-        去校验另一个的答案，而这种错配在结果里表现为莫名其妙的校验失败。
+        Two different declarations under one name means a worker validates one's answer
+        against the other's output type, and that mismatch shows up in the results as
+        validation failures nobody can account for.
         """
         raise NotImplementedError
 
     def lookup(self, name: FunctionName) -> AiFunction[Any, Any]:
-        """按名字取回声明，没有时立即失败。
+        """Take a declaration back by name, failing immediately when there is none.
 
-        取回的声明两个参数都是 `Any`。
-        泛型参数是不变的，所以一个 `AiFunction[Request, Answer]`
-        并不是一个 `AiFunction[BaseModel, BaseModel]`，写成后者的表根本装不进东西。
-        `Any` 说的是这里确实不知道类型，这是全库唯一一个擦除点：
-        worker 之后只通过 `request` 和 `returns` 两个 `type[BaseModel]` 工作，
-        而调用方那一侧的类型由 `compose` 重新恢复。
+        Both of the returned declaration's arguments are `Any`. A generic argument is
+        invariant, so an `AiFunction[Request, Answer]` is not an
+        `AiFunction[BaseModel, BaseModel]`, and a table written as the latter is one nothing
+        fits into. `Any` says that the type really is unknown here, and this is the
+        library's one erasure point: from here a worker works only through the two
+        `type[BaseModel]` values `request` and `returns`, while the caller's side has its
+        types restored by `compose`.
         """
         raise NotImplementedError
 
 
 @dataclass(frozen=True, slots=True)
 class Template[I: BaseModel]:
-    """由一段模板文字构成的 `Instruction`。
+    """An `Instruction` made of one piece of template text.
 
-    存在的理由是让「渲染是一个对象」这件事不必为最简单的情形付代价：
-    一个只需要把请求的字段填进一段固定文字的函数，不应该为此写一个类。
+    It exists so that "rendering is an object" costs nothing in the simplest case: a
+    function that only needs a request's fields dropped into a fixed piece of text should
+    not have to be given a class.
     """
 
     body: str
-    """`str.format` 的模板，请求的字段按名字代入。"""
-    rejected_heading: str = "此前的回答为什么没有被接受"
+    """A `str.format` template; the request's fields go in by name."""
+    rejected_heading: str = "Why the earlier answers were not accepted"
 
     def render(self, request: I, rejected: Sequence[str]) -> str:
-        """模板填好之后，把此前几次尝试的拒绝理由附在末尾。"""
+        """Fill the template in, then append why the earlier attempts were not accepted."""
         raise NotImplementedError

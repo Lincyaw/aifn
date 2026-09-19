@@ -12,11 +12,11 @@ from aifn.terms import Event, JsonObject, SessionId
 
 @dataclass(frozen=True, slots=True)
 class Session:
-    """一次会话的全部输入。
+    """Everything one session is given.
 
-    把它单独写出来，是为了让 engine 的接口不提及 `AiFunction`：
-    engine 要知道的是跑哪段文字、在哪个目录、注册哪些工具，
-    而输入输出类型是调用方那一侧的事。
+    Written out separately so that an engine's interface never mentions `AiFunction`: what an
+    engine needs to know is which text to run, in which directory, with which tools
+    registered, while the input and output types are the caller's side of things.
     """
 
     id: SessionId
@@ -25,18 +25,18 @@ class Session:
     permission: str
     model: Model
     tools: JsonObject
-    """工具名到参数 schema 的映射，由 `submit.bundle` 给出。"""
+    """The two tools and their schemas for this call, as `submit.bundle` gives them."""
     timeout_s: float
     env: dict[str, str]
 
 
 @dataclass(frozen=True, slots=True)
 class Transcript:
-    """一次会话跑完之后留下的东西。
+    """What one session leaves behind once it has run.
 
-    只有事件流：答案在事件流里，而它是回答、拒答还是根本没答，
-    由 `extract` 从同一份事件流里读出来，engine 不做这个判断。
-    这让一次录下来的会话可以完整地重放。
+    Only the transcript: the answer is in it, and whether it is an answer, a refusal or no
+    answer at all is read out of that same transcript by `extract`, not decided by the
+    engine. This is what lets a recorded session be replayed whole.
     """
 
     session: SessionId
@@ -44,49 +44,48 @@ class Transcript:
 
 
 class Engine(Protocol):
-    """跑一次会话的那一层。
+    """The layer that runs one session.
 
-    写成协议的理由是一次录下来的事件流也能满足它：
-    整个执行路径因此可以脱离模型被测试，
-    而那条路径上关于重试、租约和校验的判断，才是这个库真正要说对的部分。
+    A protocol because a recorded transcript also satisfies it: the whole execution path can
+    then be tested without a model, and the judgments on that path about retries, leases and
+    validation are the part of this library that has to be right.
     """
 
     def run(self, session: Session) -> Transcript:
-        """跑一次会话，把事件流交回来。
+        """Run one session and hand the transcript back.
 
-        进程崩溃、连接断开、超时都在这里抛出，不在这里被吞掉：
-        worker 要把它们分成不同的 `Fault`，而一个返回空事件流的 engine
-        会让 worker 把崩溃读成「没有回答」。
+        A crashed process, a dropped connection and a timeout are raised here rather than
+        swallowed here: a worker has to sort them into different `Fault` values, and an
+        engine that returns an empty transcript has the worker read a crash as "no answer".
         """
         ...
 
     def prepare(self) -> None:
-        """一次性的准备工作，跑任何会话之前做。
+        """The one-time work, done before any session runs.
 
-        bundle 是以复制的方式装进 profile 的，所以一次编辑要装过一遍才生效；
-        装的是哪一份和这个库现在是哪一份不一致时，
-        agent 会按装进去的那份 schema 回答，而这一侧用另一份去校验，
-        整个流程要跑到最后才发现。
-        这里立即失败。
+        The bundle is installed by being copied, so an edit takes a reinstall to reach a
+        session, and the bundle installed being a different one than this source tree is
+        silent: the agent answers through the mechanism it was installed with while this side
+        expects another, and the run is spent finding out. This fails immediately.
         """
         ...
 
 
 def faults_of(error: BaseException) -> Fault:
-    """engine 抛出的异常对应哪一种 `Fault`。
+    """Which `Fault` an exception from an engine corresponds to.
 
-    单独一个函数承担这件事，因为哪些异常算超时、哪些算崩溃是一个需要被测试的判断，
-    而写在 worker 的异常处理里它就测不到。
-    无法归类的异常在这里重新抛出，因为一个被归成 `CRASHED` 的编程错误
-    会被重试机制掩盖成一次偶发故障。
+    A function of its own carries this, because which exceptions count as a timeout and which
+    as a crash is a judgment that has to be tested, and inside a worker's exception handling
+    it cannot be. An exception that cannot be sorted is re-raised here, because a programming
+    error sorted as `CRASHED` is hidden by the retry mechanism as an intermittent fault.
     """
     raise NotImplementedError
 
 
 def describe(events: Sequence[Event]) -> str:
-    """事件流的一句话摘要，写进 `Attempt.detail`。
+    """A one-line summary of a transcript, written into `Attempt.detail`.
 
-    给那些「会话结束了但没有回答」的尝试用：
-    agent 最后说了什么，是判断该改 prompt 还是该重试的唯一依据。
+    For the attempts that ended without an answer: what the agent said last is the only thing
+    to go on in deciding whether the prompt needs changing or the call needs retrying.
     """
     raise NotImplementedError

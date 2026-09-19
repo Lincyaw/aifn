@@ -1,0 +1,24 @@
+# A model route for the bundle loadability test: one OpenAI-compatible endpoint that
+# records the tool roster the runtime sends and answers by calling the submit tool.
+# The test starts the endpoint itself and passes its address in the environment.
+#
+# `llm-pi-ai` and `credentials` are already rows of the `sdk` profile, shipped with no
+# routes of their own, so this configures the one route rather than inserting the
+# plugins again: inserting a row whose id is already there fails the whole tree.
+#
+# The shipped `deepseek-official` adapter is not pointed at the endpoint by `base_url`
+# instead, because it speaks DeepSeek's own wire dialect: it carries a streamed tool
+# call's id and name across deltas guarded by `!== undefined`, so any endpoint spelling
+# "no id in this delta" as `null` erases them. `llm-pi-ai`'s `openai-completions` is
+# the OpenAI dialect proper.
+- id: llm-pi-ai
+  config:
+    providers:
+      probe:
+        displayName: aifn bundle probe
+        apiKeyEnv: AIFN_PROBE_API_KEY
+        api: openai-completions
+        baseURL: !!js process.env.AIFN_PROBE_BASE_URL
+        models:
+          - id: aifn-probe
+            contextWindow: 262144

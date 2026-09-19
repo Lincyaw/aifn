@@ -7,67 +7,70 @@ from datetime import timedelta
 from aifn.call import Fault
 
 TRANSIENT: frozenset[Fault] = frozenset({Fault.CRASHED, Fault.NO_ANSWER, Fault.INVALID})
-"""重试还有意义的那些故障。
+"""The faults a retry still means something for.
 
-`INVALID` 在里面：校验错误可以写进下一次的 prompt，而 agent 读到
-「你上次给的这个字段不符合要求」之后改对，是这个机制最常见的用法。
-`TIMED_OUT` 不在里面：同一段 prompt 在同一个时限下再跑一次
-很可能同样超时，而这次超时已经花掉了那么长时间。
+`INVALID` is in it: a validation error can be written into the next prompt, and an agent
+reading "the field you gave last time does not meet this requirement" and then getting it
+right is this mechanism's most common use. `TIMED_OUT` is not: the same prompt under the same
+limit will very likely time out again, and this timeout has already spent that long.
 """
 
 
 @dataclass(frozen=True, slots=True)
 class Policy:
-    """一次尝试失败之后做什么。
+    """What happens after one attempt fails.
 
-    单独一个对象，因为「校验失败算不算值得再问一次」是调用方的判断：
-    一个每次调用要几十分钟的函数和一个几秒钟的函数，
-    在这件事上的答案本来就不同。
+    An object of its own, because whether a validation failure is worth asking again is the
+    caller's judgment: a function whose calls take dozens of minutes and one whose calls take
+    seconds have different answers to that on their face.
     """
 
     attempts: int = 2
     retry_on: frozenset[Fault] = TRANSIENT
     backoff: timedelta = timedelta(seconds=30)
-    """两次尝试之间等多久。
+    """How long to wait between two attempts.
 
-    有这一项是因为模型侧的限流和断流都是成片出现的：
-    立刻重试会用掉一次尝试却得到同一个故障。
+    This exists because rate limits and dropped streams on the model's side arrive in patches:
+    retrying at once spends an attempt and buys the same fault.
     """
     lease: timedelta = timedelta(minutes=5)
-    """租约多长。
+    """How long a lease runs.
 
-    比任何一次调用的时限都短，而 worker 执行期间续租。
-    租约取得和调用时限一样长时，一个被中止的 worker 会把它的调用扣住几小时；
-    而没有续租时，一次正常的长调用会被另一个 worker 当成中止的抢走。
+    Shorter than any call's own limit, with the worker renewing it while it runs. A lease as
+    long as a call's limit has a killed worker holding its call for hours; a lease that is
+    never renewed has one ordinary long call taken over by another worker that read it as
+    killed.
     """
 
     def again(self, faults: Sequence[Fault]) -> bool:
-        """已经发生过这些故障之后，还要不要再试一次。
+        """Whether to try once more, given the faults that have already happened.
 
-        看整个序列，不只看最后一次：连着三次 `INVALID` 说明这个函数的
-        输出类型或者 prompt 有问题，这种情形再试也是同样的结果。
+        The whole sequence rather than only the last: three `INVALID` attempts in a row say
+        something is wrong with this function's output type or its prompt, and trying again
+        under those conditions produces the same thing.
         """
         raise NotImplementedError
 
     def wait_s(self, attempt: int) -> float:
-        """第几次尝试之前等多少秒。"""
+        """How many seconds to wait before a given attempt."""
         raise NotImplementedError
 
 
 @dataclass(frozen=True, slots=True)
 class Corrections:
-    """此前几次尝试为什么没被接受，按顺序。
+    """Why the earlier attempts were not accepted, in order.
 
-    存在的理由是它是 agent 自我纠正的唯一通道：
-    一次会话结束进程就退出了，上一次的校验错误只能通过下一次的 prompt 到达它。
+    It exists because it is the agent's only channel for correcting itself: a session ends and
+    its process exits, so the last attempt's validation error can only arrive through the next
+    attempt's prompt.
     """
 
     reasons: tuple[str, ...] = ()
 
     def after(self, fault: Fault, detail: str) -> Corrections:
-        """加上一条，返回新的一份。
+        """Add one and return a new one.
 
-        `CRASHED` 和 `TIMED_OUT` 在这里被丢掉：它们不是关于回答内容的，
-        告诉 agent「上次那个进程崩了」只会占掉它的上下文。
+        `CRASHED` and `TIMED_OUT` are dropped here: they are not about the content of an
+        answer, and telling the agent that a process died last time only spends its context.
         """
         raise NotImplementedError
