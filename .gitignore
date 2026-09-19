@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+dist/
+node_modules/
+# 一次运行的 outbox、inbox 和事件流；默认在这里，跟着仓库走没有意义。
+mailboxes/
