@@ -4,8 +4,9 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
+from aifn.declare import Workspace
 from aifn.terms import CallId, FunctionName, JsonObject, SessionId
 
 _STRICT = ConfigDict(extra="forbid", frozen=True)
@@ -48,11 +49,7 @@ class Fault(StrEnum):
     it counts as an answer.
     """
     INVALID = "invalid"
-    """A submit call's arguments did not validate as the declared output type.
-
-    The harness's own schema is a subset, with no cross-field rules and no bounds, so
-    passing the tool's argument check does not mean passing the model's.
-    """
+    """The saved output did not validate against the declared model."""
 
 
 class Call(BaseModel):
@@ -69,14 +66,11 @@ class Call(BaseModel):
     id: CallId
     function: FunctionName
     request: JsonObject
-    issued_at: datetime
-    sample: int = 0
-    """Which copy of the same function and the same request this is.
-
-    It goes into `id`, which makes it the only difference between sampling something twice
-    on purpose and submitting it twice by accident. A resubmission gets the same `id` and
-    therefore does nothing; sampling again under a different `sample` is a new call.
-    """
+    issued_at: AwareDatetime
+    sample: int = Field(default=0, ge=0)
+    """A different sample creates a new task for otherwise identical inputs."""
+    workspace: Workspace | None = None
+    instruction: str = ""
 
 
 class Attempt(BaseModel):
@@ -89,7 +83,7 @@ class Attempt(BaseModel):
 
     model_config = _STRICT
 
-    index: int
+    index: int = Field(ge=0)
     session: SessionId
     worker: str
     started_at: datetime
@@ -170,7 +164,7 @@ class Return[O: BaseModel](BaseModel):
     @property
     def status(self) -> Status:
         """Which kind of conclusion this is, without first asking which branch `outcome` is."""
-        raise NotImplementedError
+        return self.outcome.status
 
     def unwrap(self) -> O:
         """Take the value out, failing immediately when this is not `RETURNED`.
@@ -179,7 +173,11 @@ class Return[O: BaseModel](BaseModel):
         going to crash on the next line anyway, and crashing here carries the reason from
         `outcome` with it.
         """
-        raise NotImplementedError
+        if isinstance(self.outcome, Returned):
+            return self.outcome.value
+        if isinstance(self.outcome, Refused):
+            raise RuntimeError(f"{self.function} refused: {self.outcome.reason}")
+        raise RuntimeError(f"{self.function} failed ({self.outcome.fault}): {self.outcome.detail}")
 
 
 type AnyOutcome = Outcome[Any]
@@ -193,16 +191,3 @@ conclusion fits into.
 
 type AnyReturn = Return[Any]
 """A conclusion file whose output type is unknown, for the same reason as `AnyOutcome`."""
-
-
-def identity(function: FunctionName, request: BaseModel, sample: int = 0) -> CallId:
-    """One call's id, computed from the function's name, the request, and the sample index.
-
-    A digest of the content rather than a counter or a random string, and this is the
-    library's most consequential decision: it makes resubmitting do nothing, so a run that
-    went for hours and crashed partway resumes by running the same program again. A call
-    that already has a conclusion reads it; a call that does not recognizes itself in the
-    outbox. Nothing then has to be remembered in a process, because a process cannot
-    remember it.
-    """
-    raise NotImplementedError

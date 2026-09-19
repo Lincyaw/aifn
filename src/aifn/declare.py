@@ -1,13 +1,18 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+import math
+import re
+import shutil
+import tempfile
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
+from filelock import FileLock
 from pydantic import BaseModel
 
+from aifn.storage import component
 from aifn.terms import CallId, FunctionName
 
 
@@ -26,12 +31,7 @@ class Access(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class Workspace:
-    """Which directory the agent runs in, and what it may do there.
-
-    A prompt decides what the agent was asked, a working directory decides what it can see,
-    and the second often sways an answer more than the first, so it belongs to the
-    declaration rather than to a worker's configuration.
-    """
+    """Execution directory and permissions, configured per function or per call."""
 
     directory: Path
     access: Access = Access.READ_ONLY
@@ -43,6 +43,14 @@ class Workspace:
     makes the answers impossible to explain.
     """
 
+    create: bool = False
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "directory", self.directory.expanduser().resolve())
+        object.__setattr__(self, "access", Access(self.access))
+        if self.create and self.private:
+            raise ValueError("create and private cannot both be enabled")
+
     def materialize(self, call: CallId, scratch: Path) -> Path:
         """Prepare the directory one call actually uses, and return that path.
 
@@ -50,7 +58,28 @@ class Workspace:
         exists right now: with `private` false the two are the same, and with it true this
         copies one, which is a cost only a worker can pay.
         """
-        raise NotImplementedError
+        if self.create:
+            self.directory.mkdir(parents=True, exist_ok=True)
+        if not self.directory.is_dir():
+            raise NotADirectoryError(self.directory)
+        if not self.private:
+            return self.directory
+        scratch = scratch.resolve()
+        if scratch.is_relative_to(self.directory):
+            raise ValueError("Private workspace scratch must be outside the source directory")
+        scratch.mkdir(parents=True, exist_ok=True)
+        destination = scratch / component(call)
+        with FileLock(str(scratch / f".{call}.lock")):
+            if destination.is_dir():
+                return destination
+            temporary = Path(tempfile.mkdtemp(prefix=f".{call}-", dir=scratch))
+            try:
+                shutil.copytree(self.directory, temporary, dirs_exist_ok=True, symlinks=False)
+                temporary.rename(destination)
+            finally:
+                if temporary.exists():
+                    shutil.rmtree(temporary)
+        return destination
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,24 +96,9 @@ class Model:
     max_tokens: int = 32_768
     reasoning_effort: str | None = None
 
-
-class Instruction[I: BaseModel](Protocol):
-    """How a request becomes the text the agent reads.
-
-    This is the only place in the library that decides the quality of an answer, so it is
-    an object that can be replaced and tested on its own: rendering touches neither the
-    network nor the harness, and one request is enough to see what an agent would read.
-    """
-
-    def render(self, request: I, rejected: Sequence[str]) -> str:
-        """One call's whole prompt, `rejected` being why the earlier attempts were not accepted.
-
-        `rejected` has no default: a session ends and its process exits, so the last
-        attempt's validation error reaches the agent only through the next attempt's
-        prompt, and a renderer that may ignore this argument is one that never corrects
-        itself.
-        """
-        ...
+    def __post_init__(self) -> None:
+        if not self.name or not self.provider or self.max_tokens <= 0:
+            raise ValueError("Model name, provider and positive max_tokens are required")
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,9 +114,9 @@ class AiFunction[I: BaseModel, O: BaseModel]:
     name: FunctionName
     request: type[I]
     returns: type[O]
-    instruction: Instruction[I]
-    workspace: Workspace
+    instruction: Path
     model: Model
+    workspace: Workspace | None = None
     timeout_s: float = 1800.0
     """How long one attempt is given.
 
@@ -117,6 +131,16 @@ class AiFunction[I: BaseModel, O: BaseModel]:
     retries is the function's own choice, while which faults are worth retrying is
     `Policy`'s.
     """
+
+    def __post_init__(self) -> None:
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,57}", self.name):
+            raise ValueError("Function name must match [A-Za-z0-9_-]{1,57}")
+        if not math.isfinite(self.timeout_s) or self.timeout_s <= 0 or self.attempts < 1:
+            raise ValueError("timeout_s and attempts must be positive")
+
+    def instructions(self) -> str:
+        """Read the Markdown instructions when the caller submits the task."""
+        return self.instruction.read_text(encoding="utf-8")
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,7 +161,9 @@ class Registry:
         against the other's output type, and that mismatch shows up in the results as
         validation failures nobody can account for.
         """
-        raise NotImplementedError
+        if function.name in self.functions:
+            raise ValueError(f"Function already declared: {function.name}")
+        self.functions[function.name] = function
 
     def lookup(self, name: FunctionName) -> AiFunction[Any, Any]:
         """Take a declaration back by name, failing immediately when there is none.
@@ -150,22 +176,4 @@ class Registry:
         `type[BaseModel]` values `request` and `returns`, while the caller's side has its
         types restored by `compose`.
         """
-        raise NotImplementedError
-
-
-@dataclass(frozen=True, slots=True)
-class Template[I: BaseModel]:
-    """An `Instruction` made of one piece of template text.
-
-    It exists so that "rendering is an object" costs nothing in the simplest case: a
-    function that only needs a request's fields dropped into a fixed piece of text should
-    not have to be given a class.
-    """
-
-    body: str
-    """A `str.format` template; the request's fields go in by name."""
-    rejected_heading: str = "Why the earlier answers were not accepted"
-
-    def render(self, request: I, rejected: Sequence[str]) -> str:
-        """Fill the template in, then append why the earlier attempts were not accepted."""
-        raise NotImplementedError
+        return self.functions[name]

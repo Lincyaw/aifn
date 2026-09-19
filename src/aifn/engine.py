@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -7,6 +8,7 @@ from typing import Protocol
 
 from aifn.call import Fault
 from aifn.declare import Model
+from aifn.storage import canonical
 from aifn.terms import Event, JsonObject, SessionId
 
 
@@ -25,22 +27,33 @@ class Session:
     permission: str
     model: Model
     tools: JsonObject
-    """The two tools and their schemas for this call, as `submit.bundle` gives them."""
+    """Task directory configuration for the file tools."""
     timeout_s: float
     env: dict[str, str]
+    call: str | None = None
+    attempt: int = 0
+    files: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class Transcript:
-    """What one session leaves behind once it has run.
-
-    Only the transcript: the answer is in it, and whether it is an answer, a refusal or no
-    answer at all is read out of that same transcript by `extract`, not decided by the
-    engine. This is what lets a recorded session be replayed whole.
-    """
+    """Session events and the contents of its submitted result file."""
 
     session: SessionId
     events: tuple[Event, ...]
+    submission: JsonObject | None = None
+
+
+class EngineCrashed(RuntimeError):
+    def __init__(self, detail: str, events: tuple[Event, ...] = ()) -> None:
+        super().__init__(detail)
+        self.events = events
+
+
+class EngineTimedOut(TimeoutError):
+    def __init__(self, detail: str, events: tuple[Event, ...] = ()) -> None:
+        super().__init__(detail)
+        self.events = events
 
 
 class Engine(Protocol):
@@ -61,13 +74,7 @@ class Engine(Protocol):
         ...
 
     def prepare(self) -> None:
-        """The one-time work, done before any session runs.
-
-        The bundle is installed by being copied, so an edit takes a reinstall to reach a
-        session, and the bundle installed being a different one than this source tree is
-        silent: the agent answers through the mechanism it was installed with while this side
-        expects another, and the run is spent finding out. This fails immediately.
-        """
+        """Check that the engine's runtime dependencies are ready before execution."""
         ...
 
 
@@ -79,7 +86,11 @@ def faults_of(error: BaseException) -> Fault:
     it cannot be. An exception that cannot be sorted is re-raised here, because a programming
     error sorted as `CRASHED` is hidden by the retry mechanism as an intermittent fault.
     """
-    raise NotImplementedError
+    if isinstance(error, (TimeoutError, subprocess.TimeoutExpired)):
+        return Fault.TIMED_OUT
+    if isinstance(error, (EngineCrashed, ConnectionError, subprocess.CalledProcessError)):
+        return Fault.CRASHED
+    raise error
 
 
 def describe(events: Sequence[Event]) -> str:
@@ -88,4 +99,7 @@ def describe(events: Sequence[Event]) -> str:
     For the attempts that ended without an answer: what the agent said last is the only thing
     to go on in deciding whether the prompt needs changing or the call needs retrying.
     """
-    raise NotImplementedError
+    relevant = [event for event in events if event.get("type") in {
+        "assistant/message", "tool/result", "llm/response", "error", "agent/error",
+    }]
+    return canonical(dict(relevant[-1])) if relevant else "Session ended without an accepted answer"

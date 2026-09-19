@@ -1,17 +1,3 @@
-# Bundle layer for aifn. `dsh plugin add` appends this package to the profile's
-# bundle list, so these rows compose after every `sdk-base` row and override the
-# ones they name. A call's own layer, written by `aifn.patch`, applies after this
-# one and is the only place a tool name or a schema appears.
-
-# An AI function call reads its workspace and answers by calling one tool. The
-# base roster gives it 29 tools, and most of them are a way to not answer:
-# delegating to a subagent, fanning a workflow out, keeping a todo list,
-# searching the web, planning. Each is a turn spent and a context window filled,
-# and each is a way for a call to end with no submit event in the transcript,
-# which reaches the caller as `Fault.NO_ANSWER` and costs a full retry. Only the
-# consumer rows are disabled, never the providers behind them: a provider with
-# no consumer is dormant, while a disabled provider is a service some other row
-# still waits for.
 - id: tool-web
   disabled: true
 - id: tool-subagent
@@ -36,32 +22,18 @@
   disabled: true
 - id: plan-mode
   disabled: true
-# `tool-fs` already registers `read`, and a second way to edit a file is a
-# second way to be denied by the sandbox.
 - id: tool-str-replace-editor
   disabled: true
-
-# The shipped persona says the model is a coding agent. An AI function call is not
-# one: it reads what it was given and answers by calling one tool. Saying so is what
-# stops a call from reporting that it has finished a change in prose, which reaches
-# the caller as a session holding no answer. A patch replaces a row's whole config,
-# so `persona` here supersedes the prefix and suffix the profile set.
 - id: system-prompt
   config:
     persona: >-
-      You answer one question about your working directory, using the {{model}} model.
-      Your working directory is {{cwd}}: it is what the question is about, and you
-      answer it by calling the submit tool named in your task, exactly once. Nothing
-      you write outside that call is recorded. When the question cannot be answered
-      from what you were given, call the refuse tool and say what was missing; that
-      is an answer, and guessing is not.
-
-# The row that registers this call's two tools. It is inserted with no config,
-# because a bundle cannot know what the AI functions are: the tool names and the
-# submit schema come from one function's `returns` model, and the layer
-# `aifn.patch` writes per call is what fills them in. Booting without that layer
-# fails here rather than registering a nameless tool, so a launch that forgot it
-# is a startup error instead of a session that has no way to answer.
+      You execute one file-based task using the {{model}} model.
+      Your working directory is {{cwd}}.
+      Read the instruction.md file named in the task, then read its input and output schema files.
+      Write the candidate result with write_output, inspect validate_output feedback,
+      and correct the file as needed before calling submit_output.
+      If the input cannot be answered, write refusal.json and call refuse_output.
+      Only a successfully submitted file is a final answer.
 - insert:
     - id: aifn-harness
       name: '@aifn/dsh-aifn-harness'

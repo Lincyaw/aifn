@@ -42,6 +42,10 @@ class Policy:
     killed.
     """
 
+    def __post_init__(self) -> None:
+        if self.attempts < 1 or self.backoff.total_seconds() < 0 or self.lease.total_seconds() <= 0:
+            raise ValueError("attempts and lease must be positive; backoff must be nonnegative")
+
     def again(self, faults: Sequence[Fault]) -> bool:
         """Whether to try once more, given the faults that have already happened.
 
@@ -49,11 +53,13 @@ class Policy:
         something is wrong with this function's output type or its prompt, and trying again
         under those conditions produces the same thing.
         """
-        raise NotImplementedError
+        return len(faults) < self.attempts and (not faults or faults[-1] in self.retry_on)
 
     def wait_s(self, attempt: int) -> float:
         """How many seconds to wait before a given attempt."""
-        raise NotImplementedError
+        if attempt < 0:
+            raise ValueError("attempt must be nonnegative")
+        return self.backoff.total_seconds() if attempt else 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,4 +79,6 @@ class Corrections:
         `CRASHED` and `TIMED_OUT` are dropped here: they are not about the content of an
         answer, and telling the agent that a process died last time only spends its context.
         """
-        raise NotImplementedError
+        if fault in {Fault.INVALID, Fault.NO_ANSWER}:
+            return Corrections(reasons=(*self.reasons, detail))
+        return self

@@ -1,11 +1,23 @@
 from __future__ import annotations
 
+import json
+import os
+import shlex
+import subprocess
+import threading
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final
 
-from aifn.engine import Session, Transcript
+from filelock import FileLock
+
+from aifn.declare import Access
+from aifn.engine import EngineCrashed, EngineTimedOut, Session, Transcript
+from aifn.patch import layer, write
+from aifn.storage import component
+from aifn.terms import Event
 
 BUNDLE_NAME: Final = "@aifn/dsh-aifn-harness"
 """The dsh bundle's package name.
@@ -14,7 +26,11 @@ The bundle holds the mechanism for answering one call and knows no AI function's
 name, so this side asks the profile for it by this name and nothing else.
 """
 
-BUNDLE_DIR: Final = Path(__file__).resolve().parents[3] / "harness" / "aifn-harness"
+BUNDLE_DIR: Final = (
+    Path(__file__).resolve().parents[1] / "harness"
+    if (Path(__file__).resolve().parents[1] / "harness").is_dir()
+    else Path(__file__).resolve().parents[3] / "harness" / "aifn-harness"
+)
 """Where that bundle's source is, which is what a profile is installed from."""
 
 PROFILE: Final = "sdk"
@@ -24,15 +40,6 @@ Backed by base, for its sandbox rows. `sdk-minimal` pins `danger-full-access` an
 mounts nothing that confines a session, so a call there reads and writes anywhere
 the runtime reaches, while the permission an `Access` declares only means something
 under base's own rules.
-"""
-
-STAMP: Final = ".aifn-bundle"
-"""A digest of the bundle the profile was installed from, beside its manifest.
-
-The bundle is copied in, so an edit reaches a session only after a reinstall. With
-no digest recorded, a profile holding a different bundle than this source tree is
-silent in the worst way: the agent answers the mechanism it was installed with,
-and the run is spent finding out.
 """
 
 PATCHES: Final = "aifn-patches"
@@ -62,21 +69,84 @@ class DeepSeekEngine:
     across every call it runs.
     """
 
+    patches: tuple[Path, ...] = ()
+
     def run(self, session: Session) -> Transcript:
         """Run one session.
 
-        The tools reach the runtime as a `--patch` layer written for this session
-        alone, because the submit tool's schema comes from the output type and the
-        installed bundle holds no schema of its own.
+        A per-session patch configures the task directory for the file tools.
+        The worker provides validation through a local endpoint for this attempt.
 
         The SDK's `run` is synchronous, so this blocks until the session ends, and
         concurrency is several workers each running their own engine.
         """
-        raise NotImplementedError
+        from deepseek_harness import DeepSeekHarness
+        from deepseek_harness.errors import TransportClosedError
+        from deepseek_harness.models import Notification
+
+        self.prepare()
+        permission = Access(session.permission)
+        component(session.id)
+        rows = layer(dict(session.tools), permission)
+        patch = write(rows, self.dsh_home / PATCHES, session.id)
+        environment = {**self.env, **session.env, "DSH_PERMISSION_MODE": permission.value}
+        harness = DeepSeekHarness(
+            dsh_home=str(self.dsh_home.resolve()), profile=PROFILE,
+            patches=(*(str(path.resolve()) for path in self.patches), str(patch.resolve())),
+            cwd=str(session.directory), provider=session.model.provider, model=session.model.name,
+            max_tokens=session.model.max_tokens, reasoning_effort=session.model.reasoning_effort,
+            env=environment, initialize_timeout_seconds=session.timeout_s,
+            request_timeout_seconds=session.timeout_s,
+        )
+        events: list[Event] = []
+        expired = threading.Event()
+        timer: threading.Timer | None = None
+
+        def collect(notification: Notification) -> None:
+            if (
+                notification.method == "session.event"
+                and notification.payload.get("sessionId") == session.id
+            ):
+                event = notification.payload.get("event")
+                if isinstance(event, dict):
+                    events.append(event)
+
+        def expire() -> None:
+            expired.set()
+            harness.close()
+
+        started = time.monotonic()
+        try:
+            harness.start()
+            remaining = session.timeout_s - (time.monotonic() - started)
+            if remaining <= 0:
+                raise TimeoutError("Session initialization exceeded its time limit")
+            timer = threading.Timer(remaining, expire)
+            timer.daemon = True
+            timer.start()
+            result = harness.run(session.prompt, session_id=session.id, on_notification=collect)
+            if expired.is_set():
+                raise TimeoutError("Session exceeded its time limit")
+            if result.finish_reason == "error":
+                raise EngineCrashed("Harness turn ended with an error", tuple(result.events))
+            return Transcript(session=session.id, events=tuple(result.events))
+        except TimeoutError as error:
+            raise EngineTimedOut(str(error), tuple(events)) from error
+        except TransportClosedError as error:
+            if expired.is_set():
+                raise EngineTimedOut("Session exceeded its time limit", tuple(events)) from error
+            raise EngineCrashed(str(error), tuple(events)) from error
+        finally:
+            if timer is not None:
+                timer.cancel()
+                timer.join()
+            harness.close()
 
     def prepare(self) -> None:
-        """Fail unless the profile holds the bundle this source tree currently is."""
-        raise NotImplementedError
+        """Check that the selected profile has the bundle installed."""
+        if "DSH_PERMISSION_MODE" in self.env:
+            raise ValueError("Permission comes from the call's workspace")
+        require_bundle(self.dsh_home)
 
 
 def install_bundle(dsh_home: Path, *, reinstall: bool = False) -> bool:
@@ -87,14 +157,45 @@ def install_bundle(dsh_home: Path, *, reinstall: bool = False) -> bool:
     The copy means an edit reaches a session only after reinstalling, and `add` on
     an unchanged spec does nothing, so a reinstall removes first.
     """
-    raise NotImplementedError
+    from deepseek_harness_runtime import resolve_bundled_launch_args
+
+    dsh_home = dsh_home.expanduser().resolve()
+    dsh_home.mkdir(parents=True, exist_ok=True)
+    with FileLock(str(dsh_home / ".aifn-install.lock")):
+        profile = dsh_home / "profiles" / PROFILE
+        manifest = profile / "package.json"
+        installed = False
+        if manifest.exists():
+            installed = BUNDLE_NAME in json.loads(manifest.read_text()).get("dependencies", {})
+        if installed and not reinstall:
+            require_bundle(dsh_home)
+            return False
+        environment = {**os.environ, "DSH_HOME": str(dsh_home)}
+        launch = resolve_bundled_launch_args()
+        commands = []
+        if not manifest.exists():
+            commands.append(["--profile", PROFILE, "--dump-default-config"])
+        if installed:
+            commands.append(["plugin", "--profile", PROFILE, "remove", BUNDLE_NAME])
+        commands.append(["plugin", "--profile", PROFILE, "add", f"file:{BUNDLE_DIR}"])
+        for command in commands:
+            subprocess.run([*launch, *command], env=environment, check=True, capture_output=True,
+                           text=True, timeout=300)
+        require_bundle(dsh_home)
+        return True
 
 
 def require_bundle(dsh_home: Path) -> None:
-    """Answer installed and current together, with the exact command that fixes either."""
-    raise NotImplementedError
-
-
-def fingerprint() -> str:
-    """What the bundle is now, over every file a session reads."""
-    raise NotImplementedError
+    """Report the installation command when the bundle is missing."""
+    profile = dsh_home.expanduser().resolve() / "profiles" / PROFILE
+    installed = profile / "node_modules" / "@aifn" / "dsh-aifn-harness"
+    manifest = profile / "package.json"
+    if (
+        not installed.is_dir()
+        or not manifest.is_file()
+        or BUNDLE_NAME not in json.loads(manifest.read_text()).get("dependencies", {})
+    ):
+        command = shlex.join([
+            "python", "-m", "aifn", "install", "--dsh-home", str(dsh_home.resolve()), "--reinstall",
+        ])
+        raise RuntimeError(f"Install the aifn bundle with: {command}")

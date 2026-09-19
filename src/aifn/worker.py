@@ -1,26 +1,38 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import threading
+import time
+from concurrent.futures import Future
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import TracebackType
+from typing import Any
+from uuid import uuid4
 
-from aifn.call import AnyOutcome, AnyReturn, Attempt, Call
+from pydantic import ValidationError
+
+from aifn.call import AnyOutcome, AnyReturn, Attempt, Call, Failed, Fault, Refused, Return, Returned
 from aifn.declare import Registry
-from aifn.engine import Engine, Session, Transcript
-from aifn.mailbox import Claim, Mailbox
+from aifn.engine import (
+    Engine,
+    EngineCrashed,
+    EngineTimedOut,
+    Session,
+    Transcript,
+    describe,
+    faults_of,
+)
+from aifn.files import OutputService, Receipt, RefusalFile, TaskFiles
+from aifn.mailbox import SCRATCH, Claim, Mailbox
 from aifn.policy import Corrections, Policy
+from aifn.storage import canonical
+from aifn.submit import bundle
 from aifn.terms import WorkerId
 
 
 @dataclass(frozen=True, slots=True)
 class Worker:
-    """Claims the calls in an outbox, runs them, and writes the inbox.
-
-    How many run at once is decided by the number of workers rather than by the caller: a
-    caller can issue a thousand calls, while how many agents can run at once depends on the
-    machine and the quota, and those two things should not be decided in one place. One worker
-    runs one call at a time, and more of them is more concurrency.
-    """
-
     mailbox: Mailbox
     registry: Registry
     engine: Engine
@@ -28,56 +40,210 @@ class Worker:
     id: WorkerId
 
     def work(self, budget: int | None = None) -> int:
-        """Claim and run calls until none are left to claim, and return how many were finished.
+        if budget is not None and budget < 0:
+            raise ValueError("budget must be nonnegative")
+        self.mailbox.prepare()
+        self.engine.prepare()
+        completed = 0
+        while budget is None or completed < budget:
+            if self.take_one() is None:
+                break
+            completed += 1
+        return completed
 
-        `budget` bounds how many this does: a long-lived worker has to be replaceable without
-        cutting off the call in its hands, and exiting after an agreed number is the only
-        replacement that loses no progress.
-        """
-        raise NotImplementedError
+    def serve(
+        self, *, stop: threading.Event | None = None,
+        poll_every: timedelta = timedelta(seconds=1),
+    ) -> int:
+        """Consume tasks continuously, finishing the current call before stopping."""
+        interval = poll_every.total_seconds()
+        if interval <= 0:
+            raise ValueError("poll_every must be positive")
+        signal = stop if stop is not None else threading.Event()
+        self.mailbox.prepare()
+        self.engine.prepare()
+        completed = 0
+        while not signal.is_set():
+            if self.take_one() is None:
+                signal.wait(interval)
+            else:
+                completed += 1
+        return completed
 
     def take_one(self) -> AnyReturn | None:
-        """Claim one call and carry it to a conclusion, or none when there is nothing to claim.
-
-        A method of its own, because it is the library's one place that both writes the inbox and
-        runs a model, and a test has to be able to run it exactly once.
-        """
-        raise NotImplementedError
+        self.mailbox.prepare()
+        for call in self.mailbox.pending():
+            function = self.registry.lookup(call.function)
+            claim = self.mailbox.claim(call.id, self.id, self.policy.lease)
+            if claim is None:
+                continue
+            outcome = self.execute(call, claim)
+            self.mailbox.renew(claim, self.policy.lease)
+            result: AnyReturn = Return[Any](
+                id=call.id, function=call.function, outcome=outcome,
+                attempts=self.mailbox.state(call.id).attempts, finished_at=datetime.now(UTC),
+            )
+            self.mailbox.deliver(result, claim)
+            return self.mailbox.returned(call.id, function.returns)
+        return None
 
     def execute(self, call: Call, claim: Claim) -> AnyOutcome:
-        """Carry one call to a conclusion, retrying where retrying is called for.
-
-        The lease is renewed here, because only here is it known that an attempt is still
-        running: renewal inside `work` could only happen between calls, and one call is itself
-        longer than a lease.
-        """
-        raise NotImplementedError
+        function = self.registry.lookup(call.function)
+        policy = replace(self.policy, attempts=min(self.policy.attempts, function.attempts))
+        with _Heartbeat(self.mailbox, claim, policy.lease) as heartbeat:
+            state = self.mailbox.state(call.id)
+            if state.outcome is not None:
+                return state.outcome
+            faults = [item.fault for item in state.attempts if item.fault is not None]
+            corrections = Corrections()
+            for item in state.attempts:
+                if item.fault is not None:
+                    corrections = corrections.after(item.fault, item.detail)
+            while policy.again(faults):
+                delay = policy.wait_s(len(state.attempts))
+                if state.attempts:
+                    elapsed = (datetime.now(UTC) - state.attempts[-1].finished_at).total_seconds()
+                    delay = max(0, delay - elapsed)
+                if delay:
+                    time.sleep(delay)
+                heartbeat.check()
+                attempt, outcome = self.attempt(call, len(state.attempts), corrections, claim=claim)
+                heartbeat.check()
+                if outcome is not None:
+                    return outcome
+                if attempt.fault is None:
+                    raise RuntimeError("Unsettled attempt must carry a fault")
+                faults.append(attempt.fault)
+                corrections = corrections.after(attempt.fault, attempt.detail)
+                state = self.mailbox.state(call.id)
+            if not state.attempts or state.attempts[-1].fault is None:
+                raise RuntimeError("Retry policy stopped without a failed attempt")
+            failure = Failed(fault=state.attempts[-1].fault, detail=state.attempts[-1].detail)
+            self.mailbox.conclude(claim, failure)
+            return failure
 
     def attempt(
-        self, call: Call, index: int, corrections: Corrections
+        self, call: Call, index: int, corrections: Corrections, *, claim: Claim,
     ) -> tuple[Attempt, AnyOutcome | None]:
-        """Run one attempt.
-
-        Two things come back: this attempt's record, and either a conclusion or none. None means
-        this attempt reached no conclusion and the call is not settled, leaving `execute` to
-        decide whether to try again. `REFUSED` is a conclusion here: a refusal is an answer, not
-        a failure.
-        """
-        raise NotImplementedError
+        function = self.registry.lookup(call.function)
+        workspace = call.workspace or function.workspace
+        if workspace is None:
+            raise ValueError("Call has no workspace")
+        directory = workspace.materialize(call.id, self.mailbox.root / SCRATCH)
+        session = self.session(call, index, corrections, directory)
+        started = datetime.now(UTC)
+        active = Attempt(
+            index=index, session=session.id, worker=self.id,
+            started_at=started, finished_at=started,
+        )
+        self.mailbox.begin(claim, active)
+        transcript: Transcript
+        if session.files is None:
+            raise ValueError("Session has no task files")
+        try:
+            with OutputService(TaskFiles(session.files), function.returns) as service:
+                session = replace(session, env={
+                    "AIFN_OUTPUT_ENDPOINT": service.endpoint, "AIFN_OUTPUT_TOKEN": service.token,
+                })
+                transcript = self.engine.run(session)
+                if service.files.accepted.exists():
+                    receipt = Receipt.model_validate_json(service.files.accepted.read_bytes())
+                    transcript = replace(transcript, submission=receipt.model_dump(mode="json"))
+        except (EngineCrashed, EngineTimedOut, ConnectionError, TimeoutError) as error:
+            fault = faults_of(error)
+            events = error.events if isinstance(error, (EngineCrashed, EngineTimedOut)) else ()
+            self.mailbox.record(call.id, index, events, claim=claim)
+            result: AnyOutcome = Failed(fault=fault, detail=str(error))
+        else:
+            if transcript.session != session.id:
+                raise ValueError("Engine returned another session's transcript")
+            self.mailbox.record(call.id, index, transcript.events, claim=claim,
+                                submission=transcript.submission)
+            result = self.read(call, transcript)
+        completed = active.model_copy(update={
+            "finished_at": datetime.now(UTC),
+            "fault": result.fault if isinstance(result, Failed) else None,
+            "detail": result.detail if isinstance(result, Failed) else "",
+        })
+        conclusion = None if isinstance(result, Failed) else result
+        self.mailbox.finish(claim, completed, conclusion)
+        return completed, conclusion
 
     def session(self, call: Call, index: int, corrections: Corrections, directory: Path) -> Session:
-        """One attempt's session input.
-
-        A new session id per attempt: the same id continues the same durable conversation, so
-        reusing it has a retry continuing from the answer that was just rejected, while the whole
-        point of a retry is to answer again.
-        """
-        raise NotImplementedError
+        function = self.registry.lookup(call.function)
+        workspace = call.workspace or function.workspace
+        if workspace is None:
+            raise ValueError("Call has no workspace")
+        session_id = f"{call.id}-attempt-{index}-{uuid4().hex}"
+        files = TaskFiles(self.mailbox.task_path(call.id) / "attempts" / session_id)
+        instruction = call.instruction + (
+            f"\n\n## Task files\n\n"
+            f"Read input from `{files.root / 'input.json'}`.\n"
+            f"Read the required JSON Schema from `{files.root / 'output.schema.json'}`.\n"
+            f"Read previous attempt feedback from `{files.root / 'feedback.json'}`.\n"
+            f"The working directory is `{directory}`.\n"
+            f"Write your JSON answer to `{files.output}` using write_output.\n"
+            "Use validate_output to check the file and correct all reported errors.\n"
+            "Use submit_output to validate and submit the final file.\n"
+            f"If unanswerable, write `{files.refusal}` using the schema in "
+            f"`{files.root / 'refusal.schema.json'}` and call refuse_output.\n"
+            "Output tools accept absolute paths or the names output.json and refusal.json.\n"
+        )
+        files.prepare(instruction, dict(call.request), function.returns.model_json_schema(),
+                      corrections.reasons)
+        tools = bundle(files.root)
+        prompt = f"Read `{files.root / 'instruction.md'}` and execute the task in that file."
+        return Session(
+            id=session_id, prompt=prompt, directory=directory,
+            permission=workspace.access, model=function.model, tools=tools,
+            timeout_s=function.timeout_s, env={}, call=call.id, attempt=index, files=files.root,
+        )
 
     def read(self, call: Call, transcript: Transcript) -> AnyOutcome:
-        """Read the conclusion out of a transcript, validation into the output type included.
+        function = self.registry.lookup(call.function)
+        try:
+            if transcript.submission is None:
+                return Failed(fault=Fault.NO_ANSWER, detail=describe(transcript.events))
+            receipt = Receipt.model_validate(dict(transcript.submission))
+            if receipt.status == "refused":
+                return Refused(reason=RefusalFile.model_validate(receipt.value).reason)
+            return Returned(value=function.returns.model_validate_json(canonical(receipt.value)))
+        except ValidationError as error:
+            return Failed(fault=Fault.INVALID, detail=str(error))
 
-        A pure function: a recorded transcript is enough to test it, and "which tool call counts
-        as the accepted answer" is a judgment worth testing.
-        """
-        raise NotImplementedError
+
+class _Heartbeat:
+    def __init__(self, mailbox: Mailbox, claim: Claim, lease: timedelta) -> None:
+        self.mailbox = mailbox
+        self.claim = claim
+        self.lease = lease
+        self.stop = threading.Event()
+        self.result: Future[None] = Future()
+        self.thread = threading.Thread(target=self._run, daemon=True)
+
+    def _run(self) -> None:
+        try:
+            while not self.stop.wait(self.lease.total_seconds() / 3):
+                self.mailbox.renew(self.claim, self.lease)
+        except BaseException as error:
+            self.result.set_exception(error)
+        else:
+            self.result.set_result(None)
+
+    def check(self) -> None:
+        if self.result.done():
+            self.result.result()
+
+    def __enter__(self) -> _Heartbeat:
+        self.mailbox.renew(self.claim, self.lease)
+        self.thread.start()
+        return self
+
+    def __exit__(
+        self, kind: type[BaseException] | None, error: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.stop.set()
+        self.thread.join()
+        if error is None:
+            self.check()

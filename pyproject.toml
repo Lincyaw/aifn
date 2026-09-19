@@ -5,9 +5,7 @@ description = "AI functions: a declared signature, an agent call for a body, an 
 readme = "README.md"
 requires-python = ">=3.12,<3.15"
 dependencies = [
-    # A declared output type is a Pydantic model, and so is every line of an outbox
-    # and an inbox. Validation and serialization are the same act, which makes this
-    # the one runtime dependency.
+    "filelock>=3.20",
     "pydantic>=2.12",
 ]
 
@@ -25,6 +23,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/aifn"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"harness/aifn-harness" = "aifn/harness"
 
 [dependency-groups]
 dev = [
@@ -58,12 +59,14 @@ select = ["E", "F", "I", "UP", "B", "SIM", "TID"]
 # The engines package's __init__ is that package itself, so of course it reads its
 # own modules.
 "src/aifn/engines/__init__.py" = ["TID251"]
+"src/aifn/__main__.py" = ["TID251"]
 "tests/*" = ["TID251"]
+"examples/*" = ["TID251"]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["src", "tests"]
+files = ["src", "tests", "examples"]
 
 # The SDK ships no py.typed, and only this module and the bundle's loadability test
 # read it.
