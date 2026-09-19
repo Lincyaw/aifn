@@ -89,7 +89,12 @@ class DeepSeekEngine:
         component(session.id)
         rows = layer(dict(session.tools), permission)
         patch = write(rows, self.dsh_home / PATCHES, session.id)
-        environment = {**self.env, **session.env, "DSH_PERMISSION_MODE": permission.value}
+        if session.files is None:
+            raise ValueError("Session has no task directory")
+        environment = {
+            **self.env, **session.env, "DSH_PERMISSION_MODE": permission.value,
+            "AIFN_TASK_DIRECTORY": str(session.files.resolve()),
+        }
         harness = DeepSeekHarness(
             dsh_home=str(self.dsh_home.resolve()), profile=PROFILE,
             patches=(*(str(path.resolve()) for path in self.patches), str(patch.resolve())),

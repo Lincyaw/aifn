@@ -70,13 +70,18 @@ The agent uses these tools to prepare and submit its result.
 
 | Tool | Behavior |
 | --- | --- |
-| `write_output(path, content)` | Write a candidate answer or refusal file. |
+| `write(file_path, content)` | Create an output file using dsh's default filesystem tools. |
+| `edit(file_path, old_string, new_string)` | Replace selected text in an existing output file. |
+| `str_replace_editor(...)` | View, create, replace text, or insert lines using dsh's editor. |
 | `validate_output(path)` | Run validation and return field locations and errors without ending the session. |
 | `submit_output(path)` | Reread and validate the answer, save the accepted contents, and end the session. |
 | `refuse_output(path)` | Validate and submit a refusal file, then end the session. |
 
-Paths can be the designated absolute paths or the names `output.json` and `refusal.json`.
-Output tools can modify only the current attempt's output files, so an agent with a read-only workspace can still produce a result.
+Use the designated absolute paths with filesystem tools.
+Validation and submission also accept the names `output.json` and `refusal.json`.
+The current attempt's output directory is writable through the default dsh editors, including when the business workspace is read-only.
+Task instructions and submission records remain read-only, and business files retain their declared permissions.
+Read an existing file before editing it; a file created by dsh's `write` tool is already registered as observed.
 Validation uses the full Pydantic model in the worker process, including dictionaries, nested structures, numeric constraints, and custom validators.
 JSON syntax errors include a line and column; model errors include a field path, error code, actual value, and explanation.
 The agent can edit and validate repeatedly within the same session.

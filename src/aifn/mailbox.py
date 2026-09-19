@@ -12,7 +12,7 @@ from filelock import FileLock
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, TypeAdapter
 
 from aifn.call import AnyOutcome, AnyReturn, Attempt, Call, Fault, Return, Returned
-from aifn.storage import atomic_write, canonical, component
+from aifn.storage import atomic_write, canonical, component, readable_json
 from aifn.terms import CallId, Event, JsonObject, WorkerId
 
 OUTBOX: Final = "outbox"
@@ -80,7 +80,7 @@ class Mailbox:
             if self._path(INBOX, call.id).exists():
                 return False
             task = self.task_path(call.id)
-            atomic_write(task / "input.json", canonical(dict(call.request)))
+            atomic_write(task / "input.json", readable_json(dict(call.request)))
             atomic_write(task / "instruction.md", call.instruction)
             atomic_write(path, call.model_dump_json())
             return True
@@ -205,7 +205,7 @@ class Mailbox:
                 payload = value.model_dump(mode="json", by_alias=True) if isinstance(
                     value, BaseModel
                 ) else value
-                atomic_write(self.output_path(result.id), canonical(payload))
+                atomic_write(self.output_path(result.id), readable_json(payload))
             atomic_write(path, result.model_dump_json(by_alias=True))
             self._path(CLAIMS, claim.call).unlink()
 

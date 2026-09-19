@@ -182,12 +182,15 @@ class Worker:
             f"Read the required JSON Schema from `{files.root / 'output.schema.json'}`.\n"
             f"Read previous attempt feedback from `{files.root / 'feedback.json'}`.\n"
             f"The working directory is `{directory}`.\n"
-            f"Write your JSON answer to `{files.output}` using write_output.\n"
+            f"Write your JSON answer to `{files.output}` using write.\n"
+            "Use edit or str_replace_editor for targeted corrections.\n"
+            "Read existing files before editing them. Use absolute paths with file tools.\n"
+            "The output directory is writable. Business workspace permissions still apply.\n"
             "Use validate_output to check the file and correct all reported errors.\n"
             "Use submit_output to validate and submit the final file.\n"
             f"If unanswerable, write `{files.refusal}` using the schema in "
             f"`{files.root / 'refusal.schema.json'}` and call refuse_output.\n"
-            "Output tools accept absolute paths or the names output.json and refusal.json.\n"
+            "Validation and submission accept absolute paths or output.json and refusal.json.\n"
         )
         files.prepare(instruction, dict(call.request), function.returns.model_json_schema(),
                       corrections.reasons)

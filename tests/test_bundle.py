@@ -12,7 +12,19 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, Field
 
-from aifn import AiFunction, Call, Fault, Mailbox, Model, Policy, Registry, Stage, Worker, Workspace
+from aifn import (
+    Access,
+    AiFunction,
+    Call,
+    Fault,
+    Mailbox,
+    Model,
+    Policy,
+    Registry,
+    Stage,
+    Worker,
+    Workspace,
+)
 from aifn.engines import DeepSeekEngine, ReplayEngine, install_bundle
 
 ROUTE = Path(__file__).with_name("probe-route.patch.yml")
@@ -21,6 +33,7 @@ ROUTE = Path(__file__).with_name("probe-route.patch.yml")
 class Endpoint(ThreadingHTTPServer):
     responses: list[list[dict[str, Any]]]
     requests: list[dict[str, Any]]
+    tasks: Path
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -32,6 +45,20 @@ class Handler(BaseHTTPRequestHandler):
         assert isinstance(server, Endpoint)
         server.requests.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
         calls = server.responses.pop(0) if server.responses else []
+        if calls:
+            directory = max(
+                server.tasks.glob("*/attempts/*"), key=lambda path: path.stat().st_mtime
+            )
+            paths = {"$output": str(directory / "output" / "output.json"),
+                     "$refusal": str(directory / "output" / "refusal.json"),
+                     "$input": str(directory / "input.json"),
+                     "$escape": str(directory / "output" / "outside.json")}
+            for call in calls:
+                arguments = json.loads(call["function"]["arguments"])
+                for key in ("file_path", "path"):
+                    if key in arguments:
+                        arguments[key] = paths.get(arguments[key], arguments[key])
+                call["function"]["arguments"] = json.dumps(arguments)
         delta = {"role": "assistant", "tool_calls": calls} if calls else {"content": "done"}
         payload = {"id": "response", "object": "chat.completion.chunk", "created": 0,
                    "model": "aifn-probe", "choices": [{"index": 0, "delta": delta,
@@ -81,6 +108,7 @@ def runtime(path: Path, endpoint: Endpoint) -> tuple[Stage[Request, Answer], Wor
     home = path / "dsh"
     install_bundle(home)
     mailbox = Mailbox(root=path / "mail")
+    endpoint.tasks = mailbox.root / "tasks"
     worker = Worker(mailbox=mailbox, registry=Registry(functions={"count": function}),
                     engine=DeepSeekEngine(dsh_home=home, patches=(ROUTE,), env={
                         "AIFN_PROBE_BASE_URL": f"http://127.0.0.1:{endpoint.server_address[1]}/v1",
@@ -89,17 +117,26 @@ def runtime(path: Path, endpoint: Endpoint) -> tuple[Stage[Request, Answer], Wor
     return Stage(function=function, mailbox=mailbox), worker
 
 
+@pytest.mark.parametrize("access", [Access.READ_ONLY, Access.WORKSPACE_WRITE])
 def test_harness_validates_corrects_and_submits_in_one_session(
-    tmp_path: Path, endpoint: Endpoint,
+    tmp_path: Path, endpoint: Endpoint, access: Access,
 ) -> None:
     stage, worker = runtime(tmp_path, endpoint)
     source = tmp_path / "request.json"
     source.write_text('{"file":"data.csv"}')
-    handle = stage.issue_file(source)
+    business = tmp_path / "business.txt"
+    business.write_text("unchanged")
+    handle = stage.issue_file(source, workspace=Workspace(directory=tmp_path, access=access))
     endpoint.responses = [
-        tool("write_output", path="output.json", content='{"count":0}'),
+        tool("write", file_path="$output", content='{"count":0}'),
         tool("validate_output", path="output.json"),
-        tool("write_output", path="output.json", content='{"count":3}'),
+        tool("edit", file_path="$output", old_string='"count":0', new_string='"count":2'),
+        tool("str_replace_editor", command="str_replace", path="$output",
+             old_str='"count":2', new_str='"count":3'),
+        tool("read", file_path=str(business)),
+        tool("edit", file_path=str(business), old_string="unchanged", new_string="changed"),
+        tool("read", file_path="$input"),
+        tool("write", file_path="$input", content="{}"),
         tool("submit_output", path="output.json"),
     ]
     assert worker.work() == 1
@@ -109,13 +146,20 @@ def test_harness_validates_corrects_and_submits_in_one_session(
     assert json.loads(handle.output_path.read_text()) == {"count": 3}
     assert "greater_than_equal" in json.dumps(endpoint.requests[2])
     offered = {item["function"]["name"] for item in endpoint.requests[0]["tools"]}
-    assert {"write_output", "validate_output", "submit_output", "refuse_output"} <= offered
-    assert "bash" not in offered
+    assert {"write", "edit", "str_replace_editor", "validate_output", "submit_output"} <= offered
+    assert ("bash" not in offered) == (access == Access.READ_ONLY)
+    assert business.read_text() == ("unchanged" if access == Access.READ_ONLY else "changed")
+    events = stage.mailbox.events(handle.id, 0)
+    denied = [event for event in events if event.get("type") == "tool/result"
+              and "FS_SANDBOX_DENIED" in json.dumps(event)]
+    assert len(denied) == (2 if access == Access.READ_ONLY else 1)
     task = stage.mailbox.task_path(handle.id)
     attempt = next((task / "attempts").iterdir())
     assert json.loads((attempt / "input.json").read_text()) == {"file": "data.csv"}
     assert "minimum" in (attempt / "output.schema.json").read_text()
-    assert stage.mailbox.enqueue(stage.call(Request(file="data.csv")))[1] is False
+    assert stage.mailbox.enqueue(stage.call(
+        Request(file="data.csv"), workspace=Workspace(directory=tmp_path, access=access),
+    ))[1] is False
     replay_mail = Mailbox(root=tmp_path / "replay")
     original = Call.model_validate_json(
         (stage.mailbox.root / "outbox" / f"{handle.id}.json").read_bytes()
@@ -134,7 +178,7 @@ def test_harness_retries_missing_submission_and_accepts_refusal_file(
     stage, worker = runtime(tmp_path, endpoint)
     handle = stage.issue(Request(file="absent.csv"))
     endpoint.responses = [
-        [], tool("write_output", path="refusal.json", content='{"reason":"Missing file"}'),
+        [], tool("write", file_path="$refusal", content='{"reason":"Missing file"}'),
         tool("refuse_output", path="refusal.json"),
     ]
     assert worker.work() == 1

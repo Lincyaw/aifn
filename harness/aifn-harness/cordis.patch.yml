@@ -22,7 +22,7 @@
   disabled: true
 - id: plan-mode
   disabled: true
-- id: tool-str-replace-editor
+- id: fs-sandbox
   disabled: true
 - id: system-prompt
   config:
@@ -30,10 +30,15 @@
       You execute one file-based task using the {{model}} model.
       Your working directory is {{cwd}}.
       Read the instruction.md file named in the task, then read its input and output schema files.
-      Write the candidate result with write_output, inspect validate_output feedback,
+      Write the candidate result with write, edit it with edit or str_replace_editor,
+      inspect validate_output feedback,
       and correct the file as needed before calling submit_output.
       If the input cannot be answered, write refusal.json and call refuse_output.
       Only a successfully submitted file is a final answer.
 - insert:
+    - id: aifn-filesystem
+      name: '@aifn/dsh-aifn-harness/filesystem'
+    - id: aifn-str-replace-editor
+      name: '@deepseek-ai/dsh-tool-str-replace-editor'
     - id: aifn-harness
       name: '@aifn/dsh-aifn-harness'

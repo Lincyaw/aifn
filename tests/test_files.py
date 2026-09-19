@@ -26,9 +26,7 @@ def test_file_feedback_corrections_and_submission(tmp_path: Path) -> None:
     files.prepare("Read input.json", {}, Answer.model_json_schema(), [])
     with OutputService(files, Answer) as service:
         def write(content: str) -> None:
-            assert service.dispatch(FileRequest(
-                action="write", path="output.json", content=content,
-            ))["written"]
+            files.output.write_text(content)
 
         write('{"minimum": }')
         report = service.dispatch(FileRequest(action="validate", path="output.json"))
@@ -41,9 +39,7 @@ def test_file_feedback_corrections_and_submission(tmp_path: Path) -> None:
         assert service.dispatch(FileRequest(action="validate", path="output.json"))["valid"]
         assert not files.accepted.exists()
         assert service.dispatch(FileRequest(action="submit", path="output.json"))["submitted"]
-        assert not service.dispatch(FileRequest(
-            action="write", path="output.json", content="{}",
-        ))["valid"]
+        assert not service.dispatch(FileRequest(action="submit", path="output.json"))["valid"]
         result = service.outcome()
         assert isinstance(result, Returned)
         assert result.value.timeouts == {"api": 30}

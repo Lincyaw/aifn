@@ -37,3 +37,7 @@ def canonical(value: object) -> str:
     return json.dumps(
         value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
     )
+
+
+def readable_json(value: object) -> str:
+    return json.dumps(value, indent=2, ensure_ascii=False, allow_nan=False) + "\n"

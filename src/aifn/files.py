@@ -12,7 +12,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, TypeAdapter, ValidationError
 
 from aifn.call import AnyOutcome, Refused, Returned
-from aifn.storage import atomic_write, canonical
+from aifn.storage import atomic_write, canonical, readable_json
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,10 +35,12 @@ class TaskFiles:
         self.root.mkdir(parents=True, exist_ok=False)
         self.output.parent.mkdir()
         atomic_write(self.root / "instruction.md", instruction)
-        atomic_write(self.root / "input.json", canonical(request))
-        atomic_write(self.root / "output.schema.json", canonical(schema))
-        atomic_write(self.root / "feedback.json", canonical(rejected))
-        atomic_write(self.root / "refusal.schema.json", canonical(RefusalFile.model_json_schema()))
+        atomic_write(self.root / "input.json", readable_json(request))
+        atomic_write(self.root / "output.schema.json", readable_json(schema))
+        atomic_write(self.root / "feedback.json", readable_json(rejected))
+        atomic_write(
+            self.root / "refusal.schema.json", readable_json(RefusalFile.model_json_schema())
+        )
 
 
 class RefusalFile(BaseModel):
@@ -48,9 +50,8 @@ class RefusalFile(BaseModel):
 
 class FileRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    action: Literal["write", "validate", "submit", "refuse"]
+    action: Literal["validate", "submit", "refuse"]
     path: str
-    content: str | None = None
 
 
 class Receipt(BaseModel):
@@ -129,19 +130,14 @@ class OutputService:
             if not path.is_absolute():
                 path = self.files.output.parent / path
             expected = self.files.refusal if request.action == "refuse" else self.files.output
-            allowed = {self.files.output, self.files.refusal} if request.action in {
-                "write", "validate"
-            } else {expected}
+            allowed = {self.files.output, self.files.refusal} if request.action == "validate" else {
+                expected
+            }
             if (
                 path.absolute() not in allowed or path.is_symlink()
                 or path.resolve() != path.absolute()
             ):
                 return error_report("output_path", "Use this task's designated output files only.")
-            if request.action == "write":
-                if request.content is None:
-                    return error_report("content_missing", "Writing a file requires content.")
-                atomic_write(path, request.content)
-                return {"written": True, "path": str(path)}
             model = RefusalFile if path == self.files.refusal else self.model
             report, value = validate_file(path, model)
             if value is None or request.action == "validate":

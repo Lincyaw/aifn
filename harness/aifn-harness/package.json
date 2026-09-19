@@ -7,6 +7,7 @@
   "main": "src/index.js",
   "exports": {
     ".": "./src/index.js",
+    "./filesystem": "./src/filesystem.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
@@ -15,6 +16,9 @@
   "engines": { "node": ">=22" },
   "peerDependencies": {
     "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-fs": "*",
+    "@deepseek-ai/dsh-fs-sandbox": "*",
+    "@deepseek-ai/dsh-tool-str-replace-editor": "*",
     "@deepseek-ai/dsh-tools": "*"
   }
 }

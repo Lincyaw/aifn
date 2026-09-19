@@ -10,15 +10,11 @@ export function apply(ctx, config = {}) {
   let answered = false
 
   for (const [action, tool] of [
-    ['write', 'write_output'],
     ['validate', 'validate_output'],
     ['submit', 'submit_output'],
     ['refuse', 'refuse_output'],
   ]) {
     const parameters = { path: { type: 'string', required: true, description: 'Candidate file path.' } }
-    if (action === 'write') {
-      parameters.content = { type: 'string', required: true, description: 'Complete UTF-8 file text.' }
-    }
     ctx.tools.register(defineTool({
       name: tool,
       description: descriptions[action],
