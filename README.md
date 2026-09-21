@@ -105,6 +105,23 @@ Task files are stored separately from the business workspace.
 Private copies live under the mailbox's `scratch/<id>/`, which must be outside the source directory.
 The caller coordinates changes to shared writable directories.
 
+### dsh sandbox
+
+The `sdk` profile already includes dsh's `sandbox-local`, `sandbox-policy`, and
+`bash-sandbox` / `pwsh-sandbox` plugins. No additional installation is needed.
+aifn sets their policy from `Workspace.access` and disables approval-based escalation.
+
+- `Access.READ_ONLY` prevents business-file modifications and hides shell tools.
+- `Access.WORKSPACE_WRITE` lets shell commands write within the workspace and the
+  platform's temporary directories. File editors can also write the designated task output.
+- macOS uses Seatbelt (`sandbox-exec`); Linux uses bubblewrap or Landlock.
+  dsh refuses confined commands if no supported backend is available.
+
+This is a write sandbox: host-file reads and network access remain available.
+Keep the mailbox and dsh home outside writable workspaces and platform temporary
+directories, since those paths would otherwise be writable by shell commands too.
+Use `private=True` when each call should modify its own copy of the business directory.
+
 Each worker handles one call at a time, so the worker count determines concurrency.
 `worker.serve()` consumes tasks continuously; `worker.work()` returns when no tasks are available to claim.
 File locks coordinate claims, workers renew leases during execution, and expired leases allow another worker to take over.
