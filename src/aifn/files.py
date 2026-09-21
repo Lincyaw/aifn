@@ -58,6 +58,7 @@ class Receipt(BaseModel):
     model_config = ConfigDict(extra="forbid")
     status: Literal["returned", "refused"]
     value: JsonValue
+    submitted_json: str | None = None
 
 
 def error_report(code: str, message: str, **extra: JsonValue) -> dict[str, JsonValue]:
@@ -72,6 +73,12 @@ def validate_file(
     except FileNotFoundError:
         return error_report("file_missing", "File not found. Write the output file first.",
                             file=str(path)), None
+    return _validate_json(content, model)
+
+
+def _validate_json(
+    content: bytes, model: type[BaseModel],
+) -> tuple[dict[str, JsonValue], BaseModel | None]:
     try:
         json.loads(content)
     except json.JSONDecodeError as error:
@@ -139,13 +146,19 @@ class OutputService:
             ):
                 return error_report("output_path", "Use this task's designated output files only.")
             model = RefusalFile if path == self.files.refusal else self.model
-            report, value = validate_file(path, model)
+            try:
+                content = path.read_bytes()
+            except FileNotFoundError:
+                return error_report("file_missing", "File not found. Write the output file first.",
+                                    file=str(path))
+            report, value = _validate_json(content, model)
             if value is None or request.action == "validate":
                 return report
             payload = value.model_dump(mode="json", by_alias=True)
             receipt = Receipt(
                 status="refused" if request.action == "refuse" else "returned",
                 value=payload,
+                submitted_json=content.decode("utf-8"),
             )
             atomic_write(self.files.accepted, receipt.model_dump_json())
             return {"valid": True, "submitted": True}
@@ -156,7 +169,10 @@ class OutputService:
         receipt = Receipt.model_validate_json(self.files.accepted.read_bytes())
         if receipt.status == "refused":
             return Refused(reason=RefusalFile.model_validate(receipt.value).reason)
-        return Returned(value=self.model.model_validate_json(canonical(receipt.value)))
+        value = self.model.model_validate_json(
+            receipt.submitted_json or canonical(receipt.value)
+        )
+        return Returned(value=value, submitted_json=receipt.submitted_json)
 
 
 class _Server(ThreadingHTTPServer):

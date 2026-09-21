@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import subprocess
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
@@ -14,7 +14,7 @@ from aifn.terms import Event, JsonObject, SessionId
 
 @dataclass(frozen=True, slots=True)
 class Session:
-    """Everything one session is given.
+    """One attempt's input and execution context.
 
     Written out separately so that an engine's interface never mentions `AiFunction`: what an
     engine needs to know is which text to run, in which directory, with which tools
@@ -23,7 +23,7 @@ class Session:
 
     id: SessionId
     prompt: str
-    directory: Path
+    directory: Path | None
     permission: str
     model: Model
     tools: JsonObject
@@ -33,11 +33,13 @@ class Session:
     call: str | None = None
     attempt: int = 0
     files: Path | None = None
+    request: JsonObject = field(default_factory=dict)
+    """Input passed directly to engines that do not use a workspace or file tools."""
 
 
 @dataclass(frozen=True, slots=True)
 class Transcript:
-    """Session events and the contents of its submitted result file."""
+    """Session events and the submitted result, from a file or a direct API response."""
 
     session: SessionId
     events: tuple[Event, ...]

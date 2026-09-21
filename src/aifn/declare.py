@@ -103,7 +103,7 @@ class Model:
 
 @dataclass(frozen=True, slots=True)
 class AiFunction[I: BaseModel, O: BaseModel]:
-    """A function whose signature is like any other and whose body is one agent call.
+    """A typed AI call executed by a worker's engine.
 
     It fixes both sides down: the caller sees the two types `request` and `returns`, and
     the worker sees how to render, which directory, which model and which timeout. There is
@@ -114,8 +114,8 @@ class AiFunction[I: BaseModel, O: BaseModel]:
     name: FunctionName
     request: type[I]
     returns: type[O]
-    instruction: Path
     model: Model
+    instruction: Path | None = None
     workspace: Workspace | None = None
     timeout_s: float = 1800.0
     """How long one attempt is given.
@@ -140,7 +140,7 @@ class AiFunction[I: BaseModel, O: BaseModel]:
 
     def instructions(self) -> str:
         """Read the Markdown instructions when the caller submits the task."""
-        return self.instruction.read_text(encoding="utf-8")
+        return self.instruction.read_text(encoding="utf-8") if self.instruction is not None else ""
 
 
 @dataclass(frozen=True, slots=True)

@@ -213,7 +213,11 @@ class Mailbox:
         path = self._path(INBOX, call)
         if not path.exists():
             return None
-        result = Return[returns].model_validate_json(path.read_text())  # type: ignore[valid-type]
+        raw = json.loads(path.read_text())
+        outcome = raw.get("outcome", {})
+        if outcome.get("status") == "returned" and outcome.get("submitted_json") is not None:
+            outcome["value"] = json.loads(outcome["submitted_json"])
+        result = Return[returns].model_validate_json(canonical(raw))  # type: ignore[valid-type]
         if result.id != call:
             raise ValueError("Inbox result id does not match its filename")
         return result

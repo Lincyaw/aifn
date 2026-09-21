@@ -10,12 +10,14 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, Json, computed_field, model_validator
 
 from aifn import (
     Access,
     AiFunction,
     Call,
+    Corrections,
+    Failed,
     Fault,
     Mailbox,
     Model,
@@ -196,3 +198,90 @@ def test_harness_timeout_writes_failed_result(tmp_path: Path, endpoint: Endpoint
     handle = stage.issue(Request(file="data.csv"))
     assert worker.work() == 1
     assert handle.wait().attempts[0].fault is Fault.TIMED_OUT
+
+
+class ConvertedAnswer(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    count: int = Field(validation_alias="input_count", serialization_alias="total")
+    payload: Json[list[int]]
+
+    @model_validator(mode="after")
+    def increment(self) -> ConvertedAnswer:
+        self.count += 1
+        return self
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def double(self) -> int:
+        return self.count * 2
+
+
+def test_submitted_value_survives_recovery_and_replay(tmp_path: Path, endpoint: Endpoint) -> None:
+    original_stage, worker = runtime(tmp_path, endpoint)
+    function = AiFunction(
+        name="count", request=Request, returns=ConvertedAnswer,
+        instruction=original_stage.function.instruction, model=original_stage.function.model,
+        workspace=original_stage.function.workspace, timeout_s=20,
+    )
+    stage = Stage(function=function, mailbox=worker.mailbox)
+    worker = replace(worker, registry=Registry(functions={function.name: function}))
+    handle = stage.issue(Request(file="data"))
+    candidate = '{"input_count":1,"payload":"[1,2]"}'
+    endpoint.responses = [tool("write", file_path="$output", content=candidate),
+                          tool("submit_output", path="output.json")]
+    # Simulate a worker stopping after its successful attempt but before delivery.
+    call = stage.call(Request(file="data"))
+    claim = worker.mailbox.claim(handle.id, worker.id, worker.policy.lease)
+    assert claim is not None
+    _, outcome = worker.attempt(call, 0, Corrections(), claim=claim)
+    assert outcome is not None
+    worker.mailbox.release(claim)
+    assert worker.work() == 1
+    assert len(endpoint.requests) == 2
+    expected = {"total": 2, "payload": [1, 2], "double": 4}
+    for _ in range(2):
+        value = handle.wait(1).unwrap()
+        assert value.count == 2 and value.payload == [1, 2]
+        assert value.model_dump(mode="json", by_alias=True) == expected
+    assert json.loads(handle.output_path.read_text()) == expected
+
+    replay_mailbox = Mailbox(root=tmp_path / "replay")
+    replay_mailbox.issue(call)
+    replay = replace(worker, mailbox=replay_mailbox,
+                     engine=ReplayEngine(directory=worker.mailbox.root / "events"))
+    assert replay.work() == 1
+    result = replay_mailbox.returned(handle.id, ConvertedAnswer)
+    assert result is not None and result.unwrap().count == 2
+    assert json.loads(replay_mailbox.output_path(handle.id).read_text()) == expected
+
+
+def test_preparation_failure_does_not_stop_worker(tmp_path: Path, endpoint: Endpoint) -> None:
+    stage, worker = runtime(tmp_path, endpoint)
+    invalid = stage.issue(Request(file="bad"), workspace=Workspace(directory=tmp_path / "missing"))
+    valid = stage.issue(Request(file="good"))
+    endpoint.responses = [tool("write", file_path="$output", content='{"count":3}'),
+                          tool("submit_output", path="output.json")]
+    assert worker.work() == 2
+    result = invalid.wait(1)
+    assert isinstance(result.outcome, Failed) and result.outcome.fault is Fault.SETUP
+    assert "missing" in result.outcome.detail and len(result.attempts) == 1
+    assert worker.mailbox.state(invalid.id).active is None
+    assert valid.wait(1).unwrap().count == 3
+
+
+def test_sdk_error_is_recorded_and_worker_continues(tmp_path: Path, endpoint: Endpoint) -> None:
+    stage, worker = runtime(tmp_path, endpoint)
+    invalid_function = replace(stage.function, name="bad", model=Model(
+        name="test", provider="does-not-exist",
+    ))
+    worker.registry.declare(invalid_function)
+    invalid = Stage(function=invalid_function, mailbox=worker.mailbox).issue(Request(file="bad"))
+    valid = stage.issue(Request(file="good"))
+    endpoint.responses = [tool("write", file_path="$output", content='{"count":3}'),
+                          tool("submit_output", path="output.json")]
+    assert worker.work() == 2
+    result = invalid.wait(1)
+    assert isinstance(result.outcome, Failed) and result.outcome.fault is Fault.CRASHED
+    assert "does-not-exist" in result.outcome.detail
+    assert len(result.attempts) == 2 and worker.mailbox.state(invalid.id).active is None
+    assert valid.wait(1).unwrap().count == 3

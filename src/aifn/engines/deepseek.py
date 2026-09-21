@@ -81,9 +81,11 @@ class DeepSeekEngine:
         concurrency is several workers each running their own engine.
         """
         from deepseek_harness import DeepSeekHarness
-        from deepseek_harness.errors import TransportClosedError
+        from deepseek_harness.errors import HarnessError
         from deepseek_harness.models import Notification
 
+        if session.directory is None:
+            raise EngineCrashed("DeepSeekEngine requires a workspace")
         self.prepare()
         permission = Access(session.permission)
         component(session.id)
@@ -137,7 +139,7 @@ class DeepSeekEngine:
             return Transcript(session=session.id, events=tuple(result.events))
         except TimeoutError as error:
             raise EngineTimedOut(str(error), tuple(events)) from error
-        except TransportClosedError as error:
+        except HarnessError as error:
             if expired.is_set():
                 raise EngineTimedOut("Session exceeded its time limit", tuple(events)) from error
             raise EngineCrashed(str(error), tuple(events)) from error

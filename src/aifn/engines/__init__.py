@@ -7,6 +7,7 @@ from aifn.engines.deepseek import (
     require_bundle,
 )
 from aifn.engines.replay import ReplayEngine
+from aifn.engines.typesafe import TypeSafeEngine, TypeSafeRequest
 
 __all__ = [
     "BUNDLE_DIR",
@@ -14,6 +15,8 @@ __all__ = [
     "PROFILE",
     "DeepSeekEngine",
     "ReplayEngine",
+    "TypeSafeEngine",
+    "TypeSafeRequest",
     "install_bundle",
     "require_bundle",
 ]

@@ -86,6 +86,9 @@ Validation uses the full Pydantic model in the worker process, including diction
 JSON syntax errors include a line and column; model errors include a field path, error code, actual value, and explanation.
 The agent can edit and validate repeatedly within the same session.
 Structural validation does not establish factual accuracy; content checks must be defined by business validators.
+The original submitted JSON is saved alongside the validated value, so reading or replaying
+results does not apply transformations to an already transformed value.
+Validators run again when results are loaded; they should be deterministic and free of side effects.
 
 ## Workspaces and concurrency
 
@@ -149,6 +152,8 @@ Custom model routes can be configured with `DeepSeekEngine(patches=(path,))`.
 `Returned` contains the output model, `Refused` contains the reason, and `Failed` contains the execution fault and details.
 `unwrap()` returns the output on success and raises on refusal or failure.
 The default policy retries interrupted execution and missing submissions, but does not retry timeouts.
+Workspace and task-file preparation errors produce a `Failed` result with fault `setup`
+without retrying by default; the worker continues with the next task.
 The attempt limit is the smaller of the function's and policy's limits.
 
 `Stage.issue_all()` submits a batch, and `Batch.settled()` waits and yields results as they become available.
@@ -156,6 +161,74 @@ The attempt limit is the smaller of the function's and policy's limits.
 `drain()` keeps submitting downstream work; read final results through `flow.issued().settled()`.
 Workers must keep running to receive those later tasks.
 `ReplayEngine` can load saved events and submission files to replay a call.
+
+## TypeSafe functions
+
+`TypeSafeEngine` runs a normal `AiFunction` through TypeSafe's System One API.
+Use `TypeSafeRequest` as the input and the SDK's `SystemOneResponse` as the output.
+Questions use the SDK's `Choice`, `Score`, and `Noul` directly; all questions in one
+request share the same state and are sent together.
+
+```python
+from pathlib import Path
+from typesafe_sdk import Choice, SystemOneResponse, TypeSafeClient
+from aifn import AiFunction, Mailbox, Model, Policy, Registry, Stage, Worker
+from aifn.engines import TypeSafeEngine, TypeSafeRequest
+
+judge = AiFunction(
+    name="judge",
+    request=TypeSafeRequest,
+    returns=SystemOneResponse,
+    model=Model(name="jev-1.13.0", provider="typesafe"),
+    timeout_s=30,
+)
+stage = Stage(function=judge, mailbox=Mailbox(root=Path("mailboxes/typesafe")))
+handle = stage.issue(TypeSafeRequest(
+    state={"message": "Please refund the duplicate charge."},
+    questions={"category": Choice(
+        instructions="What is the customer's issue?",
+        criteria={"billing": "Charges or refunds", "other": "Anything else"},
+    )},
+))
+
+with TypeSafeClient() as client:
+    worker = Worker(
+        mailbox=stage.mailbox,
+        registry=Registry(functions={judge.name: judge}),
+        engine=TypeSafeEngine(client=client),
+        policy=Policy(),
+        id="typesafe",
+    )
+    worker.work()
+    answer = handle.wait().unwrap()
+    print(answer.choices["category"].choice)
+```
+
+Set `TYPESAFE_API_KEY` in the environment, then run the complete two-stage example:
+
+```sh
+uv run python -m examples.typesafe
+```
+
+The original response, including probabilities, confidence, model and usage, is saved
+in the normal result and event files. Retries use aifn's `Policy`; SDK retries are
+disabled. The SDK request timeout comes from `AiFunction.timeout_s`.
+The caller owns and closes `TypeSafeClient` as shown above.
+
+TypeSafe evaluates the explicit `state` and `questions` in the input. It does not read
+business files or execute Markdown instructions: question instructions must be included
+in `questions`. No `workspace` or `instruction` file is needed. Task and result files
+are still stored under the mailbox by aifn, outside the model call. The engine receives
+input values and returns a response; it performs no filesystem operations. Calls without
+a workspace do not create agent attempt directories or start the file validation service.
+API calls consume service resources and can return different judgments on repeated execution;
+they have no business workspace side effects. Agent calls through `DeepSeekEngine` require a workspace.
+
+Composition uses the existing `Flow` and `Link.adapt`: an agent's output can become
+TypeSafe state, and TypeSafe answers can select the next agent request. Use separate
+mailboxes and workers for different engines, since each worker has one engine.
+Keep thresholds and business decisions in `Link.adapt`, where they can be evaluated
+against your data; low confidence is a returned judgment, not an execution failure.
 
 ## Development checks
 

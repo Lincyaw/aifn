@@ -102,8 +102,6 @@ class Stage[I: BaseModel, O: BaseModel]:
         if not isinstance(request, self.function.request):
             raise TypeError(f"Expected {self.function.request.__name__}")
         selected = workspace or self.function.workspace
-        if selected is None:
-            raise ValueError("A workspace is required for this call")
         instruction = self.function.instructions()
         candidate = Call(
             id=uuid4().hex,

@@ -13,7 +13,7 @@ from uuid import uuid4
 from pydantic import ValidationError
 
 from aifn.call import AnyOutcome, AnyReturn, Attempt, Call, Failed, Fault, Refused, Return, Returned
-from aifn.declare import Registry
+from aifn.declare import Access, Registry
 from aifn.engine import (
     Engine,
     EngineCrashed,
@@ -126,29 +126,40 @@ class Worker:
         self, call: Call, index: int, corrections: Corrections, *, claim: Claim,
     ) -> tuple[Attempt, AnyOutcome | None]:
         function = self.registry.lookup(call.function)
-        workspace = call.workspace or function.workspace
-        if workspace is None:
-            raise ValueError("Call has no workspace")
-        directory = workspace.materialize(call.id, self.mailbox.root / SCRATCH)
-        session = self.session(call, index, corrections, directory)
+        session_id = f"{call.id}-attempt-{index}-{uuid4().hex}"
         started = datetime.now(UTC)
         active = Attempt(
-            index=index, session=session.id, worker=self.id,
+            index=index, session=session_id, worker=self.id,
             started_at=started, finished_at=started,
         )
         self.mailbox.begin(claim, active)
-        transcript: Transcript
-        if session.files is None:
-            raise ValueError("Session has no task files")
         try:
-            with OutputService(TaskFiles(session.files), function.returns) as service:
-                session = replace(session, env={
-                    "AIFN_OUTPUT_ENDPOINT": service.endpoint, "AIFN_OUTPUT_TOKEN": service.token,
-                })
+            workspace = call.workspace or function.workspace
+            directory = workspace.materialize(call.id, self.mailbox.root / SCRATCH) if (
+                workspace is not None
+            ) else None
+            session = self.session(call, index, corrections, directory, session_id=session_id)
+        except (OSError, ValueError) as error:
+            completed = active.model_copy(update={
+                "finished_at": datetime.now(UTC), "fault": Fault.SETUP, "detail": str(error),
+            })
+            self.mailbox.record(call.id, index, (), claim=claim)
+            self.mailbox.finish(claim, completed, None)
+            return completed, None
+        transcript: Transcript
+        try:
+            if session.files is None:
                 transcript = self.engine.run(session)
-                if service.files.accepted.exists():
-                    receipt = Receipt.model_validate_json(service.files.accepted.read_bytes())
-                    transcript = replace(transcript, submission=receipt.model_dump(mode="json"))
+            else:
+                with OutputService(TaskFiles(session.files), function.returns) as service:
+                    session = replace(session, env={
+                        "AIFN_OUTPUT_ENDPOINT": service.endpoint,
+                        "AIFN_OUTPUT_TOKEN": service.token,
+                    })
+                    transcript = self.engine.run(session)
+                    if service.files.accepted.exists():
+                        receipt = Receipt.model_validate_json(service.files.accepted.read_bytes())
+                        transcript = replace(transcript, submission=receipt.model_dump(mode="json"))
         except (EngineCrashed, EngineTimedOut, ConnectionError, TimeoutError) as error:
             fault = faults_of(error)
             events = error.events if isinstance(error, (EngineCrashed, EngineTimedOut)) else ()
@@ -169,19 +180,25 @@ class Worker:
         self.mailbox.finish(claim, completed, conclusion)
         return completed, conclusion
 
-    def session(self, call: Call, index: int, corrections: Corrections, directory: Path) -> Session:
+    def session(
+        self, call: Call, index: int, corrections: Corrections, directory: Path | None,
+        *, session_id: str | None = None,
+    ) -> Session:
         function = self.registry.lookup(call.function)
         workspace = call.workspace or function.workspace
-        if workspace is None:
-            raise ValueError("Call has no workspace")
-        session_id = f"{call.id}-attempt-{index}-{uuid4().hex}"
+        session_id = session_id or f"{call.id}-attempt-{index}-{uuid4().hex}"
+        if directory is None:
+            return Session(
+                id=session_id, prompt="", directory=None, permission=Access.READ_ONLY,
+                model=function.model, tools={}, timeout_s=function.timeout_s, env={},
+                call=call.id, attempt=index, request=call.request,
+            )
         files = TaskFiles(self.mailbox.task_path(call.id) / "attempts" / session_id)
         instruction = call.instruction + (
             f"\n\n## Task files\n\n"
             f"Read input from `{files.root / 'input.json'}`.\n"
             f"Read the required JSON Schema from `{files.root / 'output.schema.json'}`.\n"
             f"Read previous attempt feedback from `{files.root / 'feedback.json'}`.\n"
-            f"The working directory is `{directory}`.\n"
             f"Write your JSON answer to `{files.output}` using write.\n"
             "Use edit or str_replace_editor for targeted corrections.\n"
             "Read existing files before editing them. Use absolute paths with file tools.\n"
@@ -192,14 +209,17 @@ class Worker:
             f"`{files.root / 'refusal.schema.json'}` and call refuse_output.\n"
             "Validation and submission accept absolute paths or output.json and refusal.json.\n"
         )
+        instruction += f"The working directory is `{directory}`.\n"
         files.prepare(instruction, dict(call.request), function.returns.model_json_schema(),
                       corrections.reasons)
         tools = bundle(files.root)
         prompt = f"Read `{files.root / 'instruction.md'}` and execute the task in that file."
         return Session(
             id=session_id, prompt=prompt, directory=directory,
-            permission=workspace.access, model=function.model, tools=tools,
+            permission=workspace.access if workspace is not None else Access.READ_ONLY,
+            model=function.model, tools=tools,
             timeout_s=function.timeout_s, env={}, call=call.id, attempt=index, files=files.root,
+            request=call.request,
         )
 
     def read(self, call: Call, transcript: Transcript) -> AnyOutcome:
@@ -210,7 +230,10 @@ class Worker:
             receipt = Receipt.model_validate(dict(transcript.submission))
             if receipt.status == "refused":
                 return Refused(reason=RefusalFile.model_validate(receipt.value).reason)
-            return Returned(value=function.returns.model_validate_json(canonical(receipt.value)))
+            value = function.returns.model_validate_json(
+                receipt.submitted_json or canonical(receipt.value)
+            )
+            return Returned(value=value, submitted_json=receipt.submitted_json)
         except ValidationError as error:
             return Failed(fault=Fault.INVALID, detail=str(error))
 

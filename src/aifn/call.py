@@ -50,6 +50,8 @@ class Fault(StrEnum):
     """
     INVALID = "invalid"
     """The saved output did not validate against the declared model."""
+    SETUP = "setup"
+    """The workspace or task files could not be prepared."""
 
 
 class Call(BaseModel):
@@ -109,6 +111,8 @@ class Returned[O: BaseModel](BaseModel):
 
     status: Literal[Status.RETURNED] = Status.RETURNED
     value: O
+    submitted_json: str | None = Field(default=None, repr=False)
+    """Original accepted input, used to reconstruct the value without cumulative transforms."""
 
 
 class Refused(BaseModel):
