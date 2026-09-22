@@ -55,10 +55,10 @@ class Fault(StrEnum):
 
 
 class Call(BaseModel):
-    """One call waiting to be run: the line written into the outbox.
+    """One call waiting to be run: the line written into the requests directory.
 
     `request` is already serialized JSON, with no request model of its own: a worker has
-    to read this line before it knows which declaration to look up, so the outbox's format
+    to read this line before it knows which declaration to look up, so this format
     cannot depend on a type that is only knowable after the registry has been consulted.
     The type is restored the moment the worker finds the declaration.
     """
@@ -151,7 +151,7 @@ when whatever reads it crashes.
 
 
 class Return[O: BaseModel](BaseModel):
-    """One call's conclusion: the file that appears in the inbox.
+    """One call's conclusion: the file that appears in the conclusions directory.
 
     Carrying every attempt, because this file is the only trace the call leaves: the
     processes exited long ago, and why the conclusion is this one can only be read here.

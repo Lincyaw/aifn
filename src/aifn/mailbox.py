@@ -15,12 +15,14 @@ from aifn.call import AnyOutcome, AnyReturn, Attempt, Call, Fault, Return, Retur
 from aifn.storage import atomic_write, canonical, component, readable_json
 from aifn.terms import CallId, Event, JsonObject, WorkerId
 
-OUTBOX: Final = "outbox"
-INBOX: Final = "inbox"
+REQUESTS: Final = "requests"
+CONCLUSIONS: Final = "conclusions"
 CLAIMS: Final = "claims"
 EVENTS: Final = "events"
 SCRATCH: Final = "scratch"
-DIRECTORIES: Final = (OUTBOX, INBOX, CLAIMS, EVENTS, SCRATCH, "locks", "runs", "tasks", "results")
+DIRECTORIES: Final = (
+    REQUESTS, CONCLUSIONS, CLAIMS, EVENTS, SCRATCH, "locks", "runs", "tasks", "results",
+)
 
 
 class LeaseLost(RuntimeError):
@@ -69,7 +71,7 @@ class Mailbox:
     def issue(self, call: Call) -> bool:
         self.prepare()
         with self._lock(call.id):
-            path = self._path(OUTBOX, call.id)
+            path = self._path(REQUESTS, call.id)
             if path.exists():
                 previous = Call.model_validate_json(path.read_text())
                 if previous.model_dump(exclude={"issued_at"}) != call.model_dump(
@@ -77,7 +79,7 @@ class Mailbox:
                 ):
                     raise ValueError(f"Call identity collision: {call.id}")
                 return False
-            if self._path(INBOX, call.id).exists():
+            if self._path(CONCLUSIONS, call.id).exists():
                 return False
             task = self.task_path(call.id)
             atomic_write(task / "input.json", readable_json(dict(call.request)))
@@ -87,7 +89,7 @@ class Mailbox:
 
     def find(self, candidate: Call) -> Call | None:
         fields = candidate.model_dump(exclude={"id", "issued_at"})
-        for path in (self.root / OUTBOX).glob("*.json"):
+        for path in (self.root / REQUESTS).glob("*.json"):
             call = Call.model_validate_json(path.read_bytes())
             if call.model_dump(exclude={"id", "issued_at"}) == fields:
                 return call
@@ -108,16 +110,16 @@ class Mailbox:
         return self.root / "results" / component(call) / "output.json"
 
     def contains(self, call: CallId) -> bool:
-        return self._path(OUTBOX, call).exists() or self._path(INBOX, call).exists()
+        return self._path(REQUESTS, call).exists() or self._path(CONCLUSIONS, call).exists()
 
     def pending(self) -> Iterator[Call]:
         calls = [
             Call.model_validate_json(path.read_text())
-            for path in (self.root / OUTBOX).glob("*.json")
+            for path in (self.root / REQUESTS).glob("*.json")
         ]
         for call in sorted(calls, key=lambda item: (item.issued_at, item.id)):
             with self._lock(call.id):
-                if self._path(INBOX, call.id).exists():
+                if self._path(CONCLUSIONS, call.id).exists():
                     continue
                 path = self._path(CLAIMS, call.id)
                 if path.exists() and not Claim.model_validate_json(path.read_text()).expired(
@@ -130,9 +132,9 @@ class Mailbox:
         if lease.total_seconds() <= 0:
             raise ValueError("lease must be positive")
         with self._lock(call):
-            if not self._path(OUTBOX, call).exists():
+            if not self._path(REQUESTS, call).exists():
                 raise KeyError(call)
-            if self._path(INBOX, call).exists():
+            if self._path(CONCLUSIONS, call).exists():
                 return None
             path = self._path(CLAIMS, call)
             now = datetime.now(UTC)
@@ -194,10 +196,10 @@ class Mailbox:
             raise ValueError("Result does not belong to this claim")
         with self._lock(claim.call):
             self._owned(claim)
-            call = Call.model_validate_json(self._path(OUTBOX, claim.call).read_text())
+            call = Call.model_validate_json(self._path(REQUESTS, claim.call).read_text())
             if result.function != call.function:
                 raise ValueError("Result function does not match the call")
-            path = self._path(INBOX, result.id)
+            path = self._path(CONCLUSIONS, result.id)
             if path.exists():
                 raise ValueError(f"Call already concluded: {result.id}")
             if isinstance(result.outcome, Returned):
@@ -210,7 +212,7 @@ class Mailbox:
             self._path(CLAIMS, claim.call).unlink()
 
     def returned[O: BaseModel](self, call: CallId, returns: type[O]) -> Return[O] | None:
-        path = self._path(INBOX, call)
+        path = self._path(CONCLUSIONS, call)
         if not path.exists():
             return None
         raw = json.loads(path.read_text())
@@ -219,7 +221,7 @@ class Mailbox:
             outcome["value"] = json.loads(outcome["submitted_json"])
         result = Return[returns].model_validate_json(canonical(raw))  # type: ignore[valid-type]
         if result.id != call:
-            raise ValueError("Inbox result id does not match its filename")
+            raise ValueError("Conclusion id does not match its filename")
         return result
 
     def record(

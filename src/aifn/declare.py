@@ -147,7 +147,7 @@ class AiFunction[I: BaseModel, O: BaseModel]:
 class Registry:
     """The map from names to declarations.
 
-    What the outbox holds is a function's name, and a worker has to find the declaration by
+    What a request holds is a function's name, and a worker has to find the declaration by
     that name before it can render or validate, so a name plus this table shared by both
     sides is the only way an AI function crosses a process boundary.
     """

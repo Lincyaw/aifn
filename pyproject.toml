@@ -1,7 +1,7 @@
 [project]
 name = "aifn"
 version = "0.1.0"
-description = "AI functions: a declared signature, an agent call for a body, an outbox and an inbox in between"
+description = "AI functions: a declared signature, an agent call for a body, requests and conclusions in between"
 readme = "README.md"
 requires-python = ">=3.12,<3.15"
 dependencies = [

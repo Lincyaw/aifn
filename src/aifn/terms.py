@@ -7,15 +7,15 @@ from pydantic import JsonValue
 type CallId = str
 """One call's identity, minted by the caller.
 
-It is the outbox's file name, the claim's file name and the inbox's file name, so it
-has to be safe to use as one. The caller mints it rather than the worker, because the
-caller returns the moment the outbox is written and it needs a name to wait on by then.
+It is the request's file name, the claim's file name and the conclusion's file name, so
+it has to be safe to use as one. The caller mints it rather than the worker, because the
+caller returns the moment the request is written and it needs a name to wait on by then.
 """
 
 type FunctionName = str
 """One AI function's name.
 
-What a worker reads out of the outbox is a name, which it looks a declaration up by,
+What a worker reads out of a request is a name, which it looks a declaration up by,
 so a name plus a registry both sides share is the only way an AI function crosses a
 process boundary.
 """

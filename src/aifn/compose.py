@@ -22,7 +22,7 @@ from aifn.terms import CallId
 class Handle[O: BaseModel]:
     """One call already issued, plus the type its conclusion needs to be read with.
 
-    This handle is what the caller gets, and it holds no value yet: the outbox is written and
+    This handle is what the caller gets, and it holds no value yet: the request is written and
     the call returns, the conclusion appears minutes or hours later, and `id` is settled right
     now. It can be written down, and the next process holding it reads the conclusion just the
     same.
@@ -117,7 +117,7 @@ class Stage[I: BaseModel, O: BaseModel]:
     ) -> Batch[O]:
         """Issue a batch at once and return immediately.
 
-        Concurrency is not here: this only writes a few lines into an outbox, which is quick
+        Concurrency is not here: this only writes a few request lines, which is quick
         however many there are, and how many agents run at once is decided by the number of
         workers.
         """
@@ -140,7 +140,7 @@ class Batch[O: BaseModel]:
     def settled(self, poll_every: timedelta = timedelta(seconds=5)) -> Iterator[Return[O]]:
         """Yield conclusions as they appear, each once, ending when all of them are out.
 
-        Implemented by polling: the state is in files, the process writing an inbox and the one
+        Implemented by polling: the state is in files, the process writing a conclusion and the one
         reading it share no other channel, and looking at a directory every few seconds over a run
         of hours costs nothing worth counting.
         """
@@ -176,7 +176,7 @@ class Batch[O: BaseModel]:
         Skipping them and carrying on with the batch: a few calls in a batch being unanswerable is
         ordinary, and letting one refusal end the batch throws away the several hundred other
         conclusions that have already been paid for. Which ones were skipped can be read from the
-        inbox.
+        conclusions directory.
         """
         for result in self.settled(poll_every):
             if isinstance(result.outcome, Returned):
@@ -315,5 +315,5 @@ def _remaining(deadline: float | None) -> float:
         return 0.1
     remaining = deadline - time.monotonic()
     if remaining <= 0:
-        raise TimeoutError("Timed out waiting for the inbox result")
+        raise TimeoutError("Timed out waiting for the call's conclusion")
     return min(0.1, remaining)

@@ -164,7 +164,7 @@ def test_harness_validates_corrects_and_submits_in_one_session(
     ))[1] is False
     replay_mail = Mailbox(root=tmp_path / "replay")
     original = Call.model_validate_json(
-        (stage.mailbox.root / "outbox" / f"{handle.id}.json").read_bytes()
+        (stage.mailbox.root / "requests" / f"{handle.id}.json").read_bytes()
     )
     replay_mail.issue(original)
     replay = replace(worker, mailbox=replay_mail,

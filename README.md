@@ -2,7 +2,7 @@
 
 aifn passes tasks to agents through files.
 The caller submits an input file, a worker prepares a task directory, and the agent reads Markdown instructions and JSON input, writes a result file, and calls validation and submission tools.
-The outbox holds tasks, the inbox holds results, and multiple workers can run concurrently.
+The requests directory holds tasks, the conclusions directory holds results, and multiple workers can run concurrently.
 
 ## Minimal call
 
@@ -49,7 +49,7 @@ if result.status == "returned":
 `handle.poll()` checks immediately, `handle.wait()` blocks, and `wait_async()` allows the event loop to do other work.
 Stopping a wait does not cancel the queued task.
 On success, `handle.output_path` points to a standalone `output.json` file.
-The inbox records success, refusal, or execution failure together with attempt history.
+A conclusion records success, refusal, or execution failure together with attempt history.
 
 ## Agent file protocol
 
