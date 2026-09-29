@@ -1,0 +1,96 @@
+from __future__ import annotations
+
+import json
+import os
+import shlex
+import subprocess
+from pathlib import Path
+from typing import Final
+
+from filelock import FileLock
+
+BUNDLE_NAME: Final = "@aifn/dsh-aifn-harness"
+"""The dsh bundle's package name.
+
+The bundle holds the mechanism for answering one call and knows no AI function's
+name, so this side asks the profile for it by this name and nothing else.
+"""
+
+BUNDLE_DIR: Final = (
+    Path(__file__).resolve().parent / "harness"
+    if (Path(__file__).resolve().parent / "harness").is_dir()
+    else Path(__file__).resolve().parents[2] / "harness" / "aifn-harness"
+)
+"""Where that bundle's source is, which is what a profile is installed from."""
+
+
+def install_bundle(dsh_home: Path, *, profile: str = "sdk", reinstall: bool = False) -> bool:
+    """Install the bundle into one profile; false when it is already the current one.
+
+    With a `file:` spec. pnpm copies the bundle into the profile's package tree,
+    which is where its peer imports resolve from and what `link:` cannot give it.
+    The copy means an edit reaches a session only after reinstalling, and `add` on
+    an unchanged spec does nothing, so a reinstall removes first.
+
+    Which profile matters because the bundle is what turns a session into a call: the `sdk`
+    profile serves programmatic clients and the `acp` profile serves session-aware ones, and a
+    call that has to reopen an earlier session runs under the second.
+    """
+    from deepseek_harness_runtime import resolve_bundled_launch_args
+
+    dsh_home = dsh_home.expanduser().resolve()
+    dsh_home.mkdir(parents=True, exist_ok=True)
+    with FileLock(str(dsh_home / ".aifn-install.lock")):
+        directory = dsh_home / "profiles" / profile
+        manifest = directory / "package.json"
+        installed = False
+        if manifest.exists():
+            installed = BUNDLE_NAME in json.loads(manifest.read_text()).get("dependencies", {})
+        if installed and not reinstall:
+            require_bundle(dsh_home, profile=profile)
+            return False
+        environment = {**os.environ, "DSH_HOME": str(dsh_home)}
+        launch = resolve_bundled_launch_args()
+        commands = []
+        if not manifest.exists():
+            commands.append(["--profile", profile, "--dump-default-config"])
+        if installed:
+            commands.append(["plugin", "--profile", profile, "remove", BUNDLE_NAME])
+        commands.append(["plugin", "--profile", profile, "add", f"file:{BUNDLE_DIR}"])
+        for command in commands:
+            subprocess.run(
+                [*launch, *command],
+                env=environment,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+        require_bundle(dsh_home, profile=profile)
+        return True
+
+
+def require_bundle(dsh_home: Path, *, profile: str = "sdk") -> None:
+    """Report the installation command when the bundle is missing."""
+    directory = dsh_home.expanduser().resolve() / "profiles" / profile
+    installed = directory / "node_modules" / "@aifn" / "dsh-aifn-harness"
+    manifest = directory / "package.json"
+    if (
+        not installed.is_dir()
+        or not manifest.is_file()
+        or BUNDLE_NAME not in json.loads(manifest.read_text()).get("dependencies", {})
+    ):
+        command = shlex.join(
+            [
+                "python",
+                "-m",
+                "aifn",
+                "install",
+                "--dsh-home",
+                str(dsh_home.resolve()),
+                "--profile",
+                profile,
+                "--reinstall",
+            ]
+        )
+        raise RuntimeError(f"Install the aifn bundle with: {command}")

@@ -73,6 +73,19 @@ class Call(BaseModel):
     """A different sample creates a new task for otherwise identical inputs."""
     workspace: Workspace | None = None
     instruction: str = ""
+    continues: SessionId | None = None
+    """The session this call continues, where its work follows an earlier call's.
+
+    A call normally opens a session of its own; one that continues another is prompted in the same
+    durable conversation, which is how a later stage keeps the context the earlier one built.
+
+    Measured against sdk 0.1.5rc1: the runtime continues a session only inside the harness process
+    that opened it. A second process prompting an existing id is refused with
+    `session "<id>" already exists`, because the prompt path creates rather than loads, and the
+    runtime answers `unknown ... method: session/load` to the ACP name for opening one. So a call
+    that continues a session needs that session's own live harness until the runtime grows a load
+    path.
+    """
 
 
 class Attempt(BaseModel):

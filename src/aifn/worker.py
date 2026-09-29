@@ -126,7 +126,8 @@ class Worker:
         self, call: Call, index: int, corrections: Corrections, *, claim: Claim,
     ) -> tuple[Attempt, AnyOutcome | None]:
         function = self.registry.lookup(call.function)
-        session_id = f"{call.id}-attempt-{index}-{uuid4().hex}"
+        # A continuing call is prompted in the session it names; a retry of it stays there too.
+        session_id = call.continues or f"{call.id}-attempt-{index}-{uuid4().hex}"
         started = datetime.now(UTC)
         active = Attempt(
             index=index, session=session_id, worker=self.id,
@@ -191,9 +192,12 @@ class Worker:
             return Session(
                 id=session_id, prompt="", directory=None, permission=Access.READ_ONLY,
                 model=function.model, tools={}, timeout_s=function.timeout_s, env={},
-                call=call.id, attempt=index, request=call.request,
+                call=call.id, attempt=index, request=call.request, continues=call.continues,
             )
-        files = TaskFiles(self.mailbox.task_path(call.id) / "attempts" / session_id)
+        # One attempt's task directory, which is not the session's: a call that continues a
+        # session keeps that id across retries, and a retry that reused the directory would find
+        # its own previous attempt's files already there.
+        files = TaskFiles(self.mailbox.task_path(call.id) / "attempts" / f"{index}-{session_id}")
         instruction = call.instruction + (
             f"\n\n## Task files\n\n"
             f"Read input from `{files.root / 'input.json'}`.\n"
@@ -219,7 +223,7 @@ class Worker:
             permission=workspace.access if workspace is not None else Access.READ_ONLY,
             model=function.model, tools=tools,
             timeout_s=function.timeout_s, env={}, call=call.id, attempt=index, files=files.root,
-            request=call.request,
+            request=call.request, continues=call.continues,
         )
 
     def read(self, call: Call, transcript: Transcript) -> AnyOutcome:

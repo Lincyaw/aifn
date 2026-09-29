@@ -3,11 +3,15 @@ import { configuration } from './config.js'
 import { alreadyAnswered, descriptions } from './prompts.js'
 
 export const name = 'aifn-harness'
-export const inject = ['tools']
+export const inject = ['tools', 'permissionPresets']
 
 export function apply(ctx, config = {}) {
-  const { endpoint, token } = configuration(config)
+  const { endpoint, token, permission } = configuration(config)
   let answered = false
+
+  ctx.on('agent/created', ({ agent }) => {
+    ctx.permissionPresets.set(agent.session, permission)
+  })
 
   for (const [action, tool] of [
     ['validate', 'validate_output'],

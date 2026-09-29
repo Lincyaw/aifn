@@ -15,6 +15,7 @@ def main() -> None:
     commands = parser.add_subparsers(dest="command", required=True)
     install = commands.add_parser("install")
     install.add_argument("--dsh-home", type=Path, required=True)
+    install.add_argument("--profile", default="sdk")
     install.add_argument("--reinstall", action="store_true")
     worker = commands.add_parser("worker")
     worker.add_argument("factory", help="module:function returning a Worker")
@@ -24,7 +25,7 @@ def main() -> None:
     if args.command == "install":
         from aifn.engines import install_bundle
 
-        install_bundle(args.dsh_home, reinstall=args.reinstall)
+        install_bundle(args.dsh_home, profile=args.profile, reinstall=args.reinstall)
         return
     module, separator, name = args.factory.partition(":")
     if not separator:

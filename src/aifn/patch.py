@@ -5,12 +5,16 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Final
 
+from pydantic import JsonValue
+
 from aifn.declare import Access
 from aifn.storage import atomic_write, component
 from aifn.submit import Tools
 from aifn.terms import SessionId
 
-type Row = dict[str, Tools | str | bool]
+type Row = dict[str, JsonValue]
+"""One patch row. Values are JSON, because a row configures a plugin and a plugin's configuration
+is JSON: an output-token bound is a number, while a mode or a directory is a string."""
 ROW: Final = "aifn-harness"
 WITHOUT_A_SHELL: Final = ("tool-bash", "tool-pwsh")
 
@@ -19,17 +23,23 @@ def layer(tools: Tools, permission: str) -> list[Row]:
     permission = Access(permission)
     disabled: list[Row] = (
         [{"id": row, "disabled": True} for row in WITHOUT_A_SHELL]
-        if permission == Access.READ_ONLY else []
+        if permission == Access.READ_ONLY
+        else []
     )
     return [
         {"id": ROW, "config": tools},
         {"id": "sandbox-policy", "config": {"mode": permission.value}},
         {"id": "approval", "config": {"policy": "never"}},
-        {"id": "permission", "config": {
-            "defaultPreset": permission.value,
-            "presets": {name: {"sandbox": permission.value, "approval": "never"}
-                        for name in ("read-only", "workspace-write", "danger-full-access")},
-        }},
+        {
+            "id": "permission",
+            "config": {
+                "defaultPreset": permission.value,
+                "presets": {
+                    name: {"sandbox": permission.value, "approval": "never"}
+                    for name in ("read-only", "workspace-write", "danger-full-access")
+                },
+            },
+        },
         *disabled,
     ]
 

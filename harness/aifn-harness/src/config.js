@@ -13,5 +13,9 @@ export function configuration(config) {
   if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.pathname !== '/output') {
     throw new Error('aifn-harness: validation service must use a local output endpoint')
   }
-  return { directory: config.directory, endpoint, token }
+  const permission = process.env.DSH_PERMISSION_MODE
+  if (!['read-only', 'workspace-write', 'danger-full-access'].includes(permission)) {
+    throw new Error('aifn-harness: a valid DSH_PERMISSION_MODE is required')
+  }
+  return { directory: config.directory, endpoint, token, permission }
 }

@@ -27,6 +27,7 @@ class Access(StrEnum):
 
     READ_ONLY = "read-only"
     WORKSPACE_WRITE = "workspace-write"
+    FULL_ACCESS = "danger-full-access"
 
 
 @dataclass(frozen=True, slots=True)

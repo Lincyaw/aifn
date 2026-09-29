@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from aifn.call import Call, Return, Returned, Status
 from aifn.declare import AiFunction, Workspace
 from aifn.mailbox import Mailbox
-from aifn.terms import CallId
+from aifn.terms import CallId, SessionId
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,7 +78,12 @@ class Stage[I: BaseModel, O: BaseModel]:
     mailbox: Mailbox
 
     def issue(
-        self, request: I, sample: int = 0, *, workspace: Workspace | None = None
+        self,
+        request: I,
+        sample: int = 0,
+        *,
+        workspace: Workspace | None = None,
+        continues: SessionId | None = None,
     ) -> Handle[O]:
         """Issue one call and return its handle at once.
 
@@ -86,7 +91,7 @@ class Stage[I: BaseModel, O: BaseModel]:
         Rerunning a program that crashed partway is therefore just running it again, with nothing
         to remember about where it got to.
         """
-        call = self.call(request, sample, workspace=workspace)
+        call = self.call(request, sample, workspace=workspace, continues=continues)
         call, _ = self.mailbox.enqueue(call)
         return Handle(id=call.id, returns=self.function.returns, mailbox=self.mailbox)
 
@@ -97,7 +102,12 @@ class Stage[I: BaseModel, O: BaseModel]:
         return self.issue(request, sample, workspace=workspace)
 
     def call(
-        self, request: I, sample: int = 0, *, workspace: Workspace | None = None
+        self,
+        request: I,
+        sample: int = 0,
+        *,
+        workspace: Workspace | None = None,
+        continues: SessionId | None = None,
     ) -> Call:
         if not isinstance(request, self.function.request):
             raise TypeError(f"Expected {self.function.request.__name__}")
@@ -108,7 +118,7 @@ class Stage[I: BaseModel, O: BaseModel]:
             function=self.function.name,
             request=request.model_dump(mode="json", by_alias=True),
             issued_at=datetime.now(UTC), sample=sample, workspace=selected,
-            instruction=instruction,
+            instruction=instruction, continues=continues,
         )
         return self.mailbox.find(candidate) or candidate
 

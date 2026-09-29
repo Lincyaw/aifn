@@ -35,6 +35,12 @@ class Session:
     files: Path | None = None
     request: JsonObject = field(default_factory=dict)
     """Input passed directly to engines that do not use a workspace or file tools."""
+    continues: SessionId | None = None
+    """The session this attempt continues, where its work follows an earlier call's.
+
+    An engine that cannot reopen a session refuses a session that carries this, and one that can
+    uses it instead of opening a new conversation.
+    """
 
 
 @dataclass(frozen=True, slots=True)
