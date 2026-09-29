@@ -70,6 +70,15 @@ class DeepSeekEngine:
     """
 
     patches: tuple[Path, ...] = ()
+    """Extra patch layers prepended to the one this engine writes per call."""
+
+    dsh_bin: Path | None = None
+    """What to launch instead of the bundled runtime, when a deployment wraps it.
+
+    The launcher a worker hands to the runtime is where a deployment puts whatever the process
+    has to have before the session starts, such as the filesystem the agent may see. The runtime
+    that wrapper finally executes is its own business; this field only replaces the argv head.
+    """
 
     def run(self, session: Session) -> Transcript:
         """Run one session.
@@ -99,6 +108,7 @@ class DeepSeekEngine:
         }
         harness = DeepSeekHarness(
             dsh_home=str(self.dsh_home.resolve()), profile=PROFILE,
+            dsh_bin=None if self.dsh_bin is None else str(self.dsh_bin.resolve()),
             patches=(*(str(path.resolve()) for path in self.patches), str(patch.resolve())),
             cwd=str(session.directory), provider=session.model.provider, model=session.model.name,
             max_tokens=session.model.max_tokens, reasoning_effort=session.model.reasoning_effort,
