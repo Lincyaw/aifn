@@ -16,16 +16,10 @@ type Row = dict[str, JsonValue]
 """One patch row. Values are JSON, because a row configures a plugin and a plugin's configuration
 is JSON: an output-token bound is a number, while a mode or a directory is a string."""
 ROW: Final = "aifn-harness"
-WITHOUT_A_SHELL: Final = ("tool-bash", "tool-pwsh")
 
 
 def layer(tools: Tools, permission: str) -> list[Row]:
     permission = Access(permission)
-    disabled: list[Row] = (
-        [{"id": row, "disabled": True} for row in WITHOUT_A_SHELL]
-        if permission == Access.READ_ONLY
-        else []
-    )
     return [
         {"id": ROW, "config": tools},
         {"id": "sandbox-policy", "config": {"mode": permission.value}},
@@ -40,7 +34,9 @@ def layer(tools: Tools, permission: str) -> list[Row]:
                 },
             },
         },
-        *disabled,
+        *([{"id": "tool-bash", "disabled": False},
+           {"id": "tool-pwsh", "disabled": False}]
+          if permission == Access.READ_ONLY else []),
     ]
 
 
