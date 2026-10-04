@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final
 
-from aifn.bundle import require_bundle
+from aifn.bundle import require_bundle, runtime_bin
 from aifn.declare import Access
 from aifn.engine import EngineCrashed, EngineTimedOut, Session, Transcript
 from aifn.patch import layer, write
@@ -91,7 +91,9 @@ class DeepSeekEngine:
         }
         harness = DeepSeekHarness(
             dsh_home=str(self.dsh_home.resolve()),
-            dsh_bin=None if self.dsh_bin is None else str(self.dsh_bin.resolve()),
+            dsh_bin=str(
+                runtime_bin(self.dsh_home) if self.dsh_bin is None else self.dsh_bin.resolve()
+            ),
             profile=PROFILE,
             patches=(*(str(path.resolve()) for path in self.patches), str(patch.resolve())),
             cwd=str(session.directory),

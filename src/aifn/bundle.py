@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Final
@@ -24,6 +25,49 @@ BUNDLE_DIR: Final = (
 """Where that bundle's source is, which is what a profile is installed from."""
 
 
+def runtime_bin(dsh_home: Path) -> Path:
+    directory = dsh_home.expanduser().resolve() / "aifn-runtime"
+    manifest = directory / "node_modules" / "@deepseek-ai" / "dsh" / "package.json"
+    expected = json.loads((BUNDLE_DIR / "runtime" / "package.json").read_text())[
+        "dependencies"
+    ]["@deepseek-ai/dsh"]
+    executable = directory / "node_modules" / ".bin" / (
+        "dsh.cmd" if os.name == "nt" else "dsh"
+    )
+    if (
+        not manifest.is_file()
+        or json.loads(manifest.read_text())["version"] != expected
+        or not executable.is_file()
+    ):
+        raise RuntimeError(
+            f"Install dsh {expected} with: python -m aifn install "
+            f"--dsh-home {shlex.quote(str(dsh_home.resolve()))} --reinstall"
+        )
+    return executable
+
+
+def install_runtime(dsh_home: Path, *, reinstall: bool = False) -> Path:
+    directory = dsh_home / "aifn-runtime"
+    directory.mkdir(parents=True, exist_ok=True)
+    changed = False
+    for name in ("package.json", "package-lock.json"):
+        source = BUNDLE_DIR / "runtime" / name
+        target = directory / name
+        if not target.is_file() or target.read_bytes() != source.read_bytes():
+            shutil.copyfile(source, target)
+            changed = True
+    if reinstall or changed or not (directory / "node_modules" / ".package-lock.json").is_file():
+        subprocess.run(
+            ["npm.cmd" if os.name == "nt" else "npm", "ci", "--prefix", str(directory),
+             "--no-audit", "--no-fund"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+    return runtime_bin(dsh_home)
+
+
 def install_bundle(dsh_home: Path, *, profile: str = "sdk", reinstall: bool = False) -> bool:
     """Install the bundle into one profile; false when it is already the current one.
 
@@ -36,11 +80,10 @@ def install_bundle(dsh_home: Path, *, profile: str = "sdk", reinstall: bool = Fa
     profile serves programmatic clients and the `acp` profile serves session-aware ones, and a
     call that has to reopen an earlier session runs under the second.
     """
-    from deepseek_harness_runtime import resolve_bundled_launch_args
-
     dsh_home = dsh_home.expanduser().resolve()
     dsh_home.mkdir(parents=True, exist_ok=True)
     with FileLock(str(dsh_home / ".aifn-install.lock")):
+        executable = install_runtime(dsh_home, reinstall=reinstall)
         directory = dsh_home / "profiles" / profile
         manifest = directory / "package.json"
         installed = False
@@ -50,7 +93,7 @@ def install_bundle(dsh_home: Path, *, profile: str = "sdk", reinstall: bool = Fa
             require_bundle(dsh_home, profile=profile)
             return False
         environment = {**os.environ, "DSH_HOME": str(dsh_home)}
-        launch = resolve_bundled_launch_args()
+        launch = (str(executable),)
         commands = []
         if not manifest.exists():
             commands.append(["--profile", profile, "--dump-default-config"])

@@ -20,7 +20,7 @@ ROW: Final = "aifn-harness"
 
 def layer(tools: Tools, permission: str) -> list[Row]:
     permission = Access(permission)
-    return [
+    rows: list[Row] = [
         {"id": ROW, "config": tools},
         {"id": "sandbox-policy", "config": {"mode": permission.value}},
         {"id": "approval", "config": {"policy": "never"}},
@@ -34,10 +34,13 @@ def layer(tools: Tools, permission: str) -> list[Row]:
                 },
             },
         },
-        *([{"id": "tool-bash", "disabled": False},
-           {"id": "tool-pwsh", "disabled": False}]
-          if permission == Access.READ_ONLY else []),
     ]
+    if permission == Access.READ_ONLY:
+        rows.extend([
+            {"id": "tool-bash", "disabled": True},
+            {"id": "tool-pwsh", "disabled": True},
+        ])
+    return rows
 
 
 def write(rows: Sequence[Row], directory: Path, session: SessionId) -> Path:

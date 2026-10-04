@@ -136,12 +136,22 @@ The file queue scans existing tasks for duplicates and is intended for local bat
 
 ## Run the example
 
-Requires Python 3.12 through 3.14, Node.js 22 or later, and pnpm.
+Requires Python 3.12 through 3.14, Node.js 22.19 or later, npm, and pnpm.
+The installer uses the npm release of dsh pinned in `harness/aifn-harness/runtime/package.json` and its lockfile under the selected Harness home.
 
 ```sh
 uv sync --all-extras
 uv run python -m aifn install --dsh-home "$HOME/.dsh"
 ```
+
+Update dsh to the newest published npm version, including prereleases, and refresh its lockfile:
+
+```sh
+node scripts/bump-dsh.mjs
+uv run python -m aifn install --dsh-home "$HOME/.dsh" --reinstall
+```
+
+Use `node scripts/bump-dsh.mjs --check` to query the current and latest versions without changing files.
 
 Configure `DEEPSEEK_API_KEY`, then start workers from the repository root in two terminals.
 

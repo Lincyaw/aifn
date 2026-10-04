@@ -15,7 +15,7 @@ dependencies = [
 # aifn.engines.deepseek reads it, and a replay reads a recorded transcript, which
 # needs nothing of it.
 deepseek = [
-    "deepseek-harness-sdk>=0.1.2rc1",
+    "deepseek-harness-sdk>=0.1.5rc1",
 ]
 
 [build-system]
