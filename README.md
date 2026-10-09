@@ -177,6 +177,8 @@ Custom model routes can be configured with `DeepSeekEngine(patches=(path,))`.
 ## Results and composition
 
 `Returned` contains the output model, `Refused` contains the reason, and `Failed` contains the execution fault and details.
+`DeepSeekEngine` preserves the complete final Harness error object as JSON in `Failed.detail`, including its original code and message.
+Attempt history and `unwrap()` errors carry those details, and the original session events remain in the mailbox's `events` directory.
 `unwrap()` returns the output on success and raises on refusal or failure.
 The default policy retries interrupted execution and missing submissions, but does not retry timeouts.
 Workspace and task-file preparation errors produce a `Failed` result with fault `setup`

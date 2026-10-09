@@ -1,0 +1,11 @@
+{
+  "data": {
+    "reason": {
+      "kind": "completed"
+    },
+    "turn": 1
+  },
+  "seq": 812,
+  "time": 1791459870640,
+  "type": "turn/end"
+}

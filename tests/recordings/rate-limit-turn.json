@@ -1,0 +1,15 @@
+{
+  "data": {
+    "reason": {
+      "error": {
+        "code": "RATE_LIMIT",
+        "message": "OpenAI API error (429): {\"message\":\"触发平台限流(bucket=project_rpm,limit=500)\",\"type\":\"PlatformRateLimitReached\",\"code\":\"1010\"}"
+      },
+      "kind": "error"
+    },
+    "turn": 1
+  },
+  "seq": 91,
+  "time": 1791463106555,
+  "type": "turn/end"
+}

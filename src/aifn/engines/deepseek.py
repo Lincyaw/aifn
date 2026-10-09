@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final
@@ -11,7 +11,7 @@ from aifn.bundle import require_bundle, runtime_bin
 from aifn.declare import Access
 from aifn.engine import EngineCrashed, EngineTimedOut, Session, Transcript
 from aifn.patch import layer, write
-from aifn.storage import component
+from aifn.storage import canonical, component
 from aifn.terms import Event
 
 PROFILE: Final = "sdk"
@@ -30,6 +30,22 @@ In the harness home rather than beside the mailbox: the layer is what this launc
 tells the runtime, its lifetime is the session, and a mailbox is the record of what
 the calls themselves were.
 """
+
+
+def _turn_error(events: Sequence[Event]) -> str:
+    ended = next((event for event in reversed(events) if event.get("type") == "turn/end"), None)
+    if ended is None:
+        raise ValueError("Harness error finish has no turn/end event")
+    data = ended["data"]
+    if not isinstance(data, dict):
+        raise ValueError("Harness turn/end data must be an object")
+    reason = data["reason"]
+    if not isinstance(reason, dict) or reason.get("kind") != "error":
+        raise ValueError("Harness error finish disagrees with the last turn/end event")
+    error = reason["error"]
+    if not isinstance(error, dict) or not isinstance(error.get("message"), str):
+        raise ValueError("Harness turn/end error requires an object with a string message")
+    return canonical(error)
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,7 +151,7 @@ class DeepSeekEngine:
             if expired.is_set():
                 raise TimeoutError("Session exceeded its time limit")
             if result.finish_reason == "error":
-                raise EngineCrashed("Harness turn ended with an error", tuple(result.events))
+                raise EngineCrashed(_turn_error(result.events), tuple(result.events))
             return Transcript(session=session.id, events=tuple(result.events))
         except TimeoutError as error:
             raise EngineTimedOut(str(error), tuple(events)) from error
