@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Protocol
 from uuid import uuid4
 
 from filelock import FileLock
@@ -51,14 +51,57 @@ class RunState(BaseModel):
     outcome: AnyOutcome | None = None
 
 
+class MailboxBackend(Protocol):
+    def prepare(self) -> None: ...
+    def issue(self, call: Call) -> bool: ...
+    def find(self, candidate: Call) -> Call | None: ...
+    def enqueue(self, call: Call) -> tuple[Call, bool]: ...
+    def call(self, identifier: CallId) -> Call: ...
+    def requests(self) -> tuple[Call, ...]: ...
+    def call_ids(self) -> tuple[CallId, ...]: ...
+    def conclusions(self) -> tuple[AnyReturn, ...]: ...
+    def conclusion_ids(self) -> tuple[CallId, ...]: ...
+    def task_path(self, call: CallId) -> Path: ...
+    def output_path(self, call: CallId) -> Path: ...
+    def contains(self, call: CallId) -> bool: ...
+    def pending(self) -> Iterator[Call]: ...
+    def claim(self, call: CallId, worker: WorkerId, lease: timedelta) -> Claim | None: ...
+    def renew(self, claim: Claim, lease: timedelta) -> Claim: ...
+    def release(self, claim: Claim) -> None: ...
+    def deliver(self, result: AnyReturn, claim: Claim) -> None: ...
+    def returned[O: BaseModel](self, call: CallId, returns: type[O]) -> Return[O] | None: ...
+    def record(
+        self, call: CallId, attempt: int, events: Sequence[Event], *, claim: Claim | None = None,
+        submission: JsonObject | None = None,
+    ) -> Path: ...
+    def events(self, call: CallId, attempt: int) -> Sequence[Event]: ...
+    def event_path(self, call: CallId, attempt: int) -> Path: ...
+    def has_events(self, call: CallId, attempt: int) -> bool: ...
+    def event_attempts(self, call: CallId) -> tuple[int, ...]: ...
+    def state(self, call: CallId) -> RunState: ...
+    def state_items(self) -> tuple[tuple[CallId, RunState], ...]: ...
+    def begin(self, claim: Claim, attempt: Attempt) -> None: ...
+    def finish(self, claim: Claim, attempt: Attempt, outcome: AnyOutcome | None) -> None: ...
+    def conclude(self, claim: Claim, outcome: AnyOutcome) -> None: ...
+
+
+def read_events(path: Path) -> Sequence[Event]:
+    adapter = TypeAdapter(list[dict[str, Any]])
+    return adapter.validate_python([json.loads(line) for line in path.read_text().splitlines()])
+
+
 @dataclass(frozen=True, slots=True)
 class Mailbox:
     root: Path
+    backend: MailboxBackend | None = field(default=None, kw_only=True, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "root", self.root.expanduser().resolve())
 
     def prepare(self) -> None:
+        if self.backend is not None:
+            self.backend.prepare()
+            return
         for directory in DIRECTORIES:
             (self.root / directory).mkdir(parents=True, exist_ok=True)
 
@@ -69,6 +112,8 @@ class Mailbox:
         return FileLock(str(self.root / "locks" / f"{component(call)}.lock"))
 
     def issue(self, call: Call) -> bool:
+        if self.backend is not None:
+            return self.backend.issue(call)
         self.prepare()
         with self._lock(call.id):
             path = self._path(REQUESTS, call.id)
@@ -88,6 +133,8 @@ class Mailbox:
             return True
 
     def find(self, candidate: Call) -> Call | None:
+        if self.backend is not None:
+            return self.backend.find(candidate)
         fields = candidate.model_dump(exclude={"id", "issued_at"})
         for path in (self.root / REQUESTS).glob("*.json"):
             call = Call.model_validate_json(path.read_bytes())
@@ -96,6 +143,8 @@ class Mailbox:
         return None
 
     def enqueue(self, call: Call) -> tuple[Call, bool]:
+        if self.backend is not None:
+            return self.backend.enqueue(call)
         self.prepare()
         with FileLock(str(self.root / "locks" / "queue.lock")):
             existing = self.find(call)
@@ -103,16 +152,60 @@ class Mailbox:
                 return existing, False
             return call, self.issue(call)
 
+    def call(self, identifier: CallId) -> Call:
+        if self.backend is not None:
+            return self.backend.call(identifier)
+        result = Call.model_validate_json(self._path(REQUESTS, identifier).read_bytes())
+        if result.id != identifier:
+            raise ValueError("Request id does not match its filename")
+        return result
+
+    def requests(self) -> tuple[Call, ...]:
+        if self.backend is not None:
+            return self.backend.requests()
+        calls = (self.call(path.stem) for path in (self.root / REQUESTS).glob("*.json"))
+        return tuple(sorted(calls, key=lambda item: (item.issued_at, item.id)))
+
+    def conclusions(self) -> tuple[AnyReturn, ...]:
+        if self.backend is not None:
+            return self.backend.conclusions()
+        results = []
+        for path in sorted((self.root / CONCLUSIONS).glob("*.json")):
+            result = Return[Any].model_validate_json(path.read_bytes())
+            if result.id != path.stem:
+                raise ValueError("Conclusion id does not match its filename")
+            results.append(result)
+        return tuple(results)
+
+    def call_ids(self) -> tuple[CallId, ...]:
+        if self.backend is not None:
+            return self.backend.call_ids()
+        return tuple(sorted(path.stem for path in (self.root / REQUESTS).glob("*.json")))
+
+    def conclusion_ids(self) -> tuple[CallId, ...]:
+        if self.backend is not None:
+            return self.backend.conclusion_ids()
+        return tuple(sorted(path.stem for path in (self.root / CONCLUSIONS).glob("*.json")))
+
     def task_path(self, call: CallId) -> Path:
+        if self.backend is not None:
+            return self.backend.task_path(call)
         return self.root / "tasks" / component(call)
 
     def output_path(self, call: CallId) -> Path:
+        if self.backend is not None:
+            return self.backend.output_path(call)
         return self.root / "results" / component(call) / "output.json"
 
     def contains(self, call: CallId) -> bool:
+        if self.backend is not None:
+            return self.backend.contains(call)
         return self._path(REQUESTS, call).exists() or self._path(CONCLUSIONS, call).exists()
 
     def pending(self) -> Iterator[Call]:
+        if self.backend is not None:
+            yield from self.backend.pending()
+            return
         calls = [
             Call.model_validate_json(path.read_text())
             for path in (self.root / REQUESTS).glob("*.json")
@@ -129,6 +222,8 @@ class Mailbox:
             yield call
 
     def claim(self, call: CallId, worker: WorkerId, lease: timedelta) -> Claim | None:
+        if self.backend is not None:
+            return self.backend.claim(call, worker, lease)
         if lease.total_seconds() <= 0:
             raise ValueError("lease must be positive")
         with self._lock(call):
@@ -168,6 +263,8 @@ class Mailbox:
         return current
 
     def renew(self, claim: Claim, lease: timedelta) -> Claim:
+        if self.backend is not None:
+            return self.backend.renew(claim, lease)
         if lease.total_seconds() <= 0:
             raise ValueError("lease must be positive")
         with self._lock(claim.call):
@@ -178,6 +275,9 @@ class Mailbox:
             return renewed
 
     def release(self, claim: Claim) -> None:
+        if self.backend is not None:
+            self.backend.release(claim)
+            return
         with self._lock(claim.call):
             self._owned(claim)
             state = self.state(claim.call)
@@ -192,6 +292,9 @@ class Mailbox:
             self._path(CLAIMS, claim.call).unlink()
 
     def deliver(self, result: AnyReturn, claim: Claim) -> None:
+        if self.backend is not None:
+            self.backend.deliver(result, claim)
+            return
         if result.id != claim.call:
             raise ValueError("Result does not belong to this claim")
         with self._lock(claim.call):
@@ -212,6 +315,8 @@ class Mailbox:
             self._path(CLAIMS, claim.call).unlink()
 
     def returned[O: BaseModel](self, call: CallId, returns: type[O]) -> Return[O] | None:
+        if self.backend is not None:
+            return self.backend.returned(call, returns)
         path = self._path(CONCLUSIONS, call)
         if not path.exists():
             return None
@@ -228,6 +333,8 @@ class Mailbox:
         self, call: CallId, attempt: int, events: Sequence[Event], *, claim: Claim | None = None,
         submission: JsonObject | None = None,
     ) -> Path:
+        if self.backend is not None:
+            return self.backend.record(call, attempt, events, claim=claim, submission=submission)
         if attempt < 0:
             raise ValueError("attempt must be nonnegative")
         path = self.root / EVENTS / component(call) / f"{attempt}.jsonl"
@@ -242,18 +349,45 @@ class Mailbox:
         return path
 
     def events(self, call: CallId, attempt: int) -> Sequence[Event]:
-        path = self.root / EVENTS / component(call) / f"{attempt}.jsonl"
-        adapter = TypeAdapter(list[dict[str, Any]])
-        return adapter.validate_python([json.loads(line) for line in path.read_text().splitlines()])
+        if self.backend is not None:
+            return self.backend.events(call, attempt)
+        return read_events(self.event_path(call, attempt))
+
+    def event_path(self, call: CallId, attempt: int) -> Path:
+        if self.backend is not None:
+            return self.backend.event_path(call, attempt)
+        return self.root / EVENTS / component(call) / f"{attempt}.jsonl"
+
+    def has_events(self, call: CallId, attempt: int) -> bool:
+        if self.backend is not None:
+            return self.backend.has_events(call, attempt)
+        return (self.root / EVENTS / component(call) / f"{attempt}.jsonl").is_file()
+
+    def event_attempts(self, call: CallId) -> tuple[int, ...]:
+        if self.backend is not None:
+            return self.backend.event_attempts(call)
+        return tuple(sorted(int(path.stem) for path in
+                            (self.root / EVENTS / component(call)).glob("*.jsonl")))
 
     def state(self, call: CallId) -> RunState:
+        if self.backend is not None:
+            return self.backend.state(call)
         path = self._path("runs", call)
         return RunState.model_validate_json(path.read_text()) if path.exists() else RunState()
+
+    def state_items(self) -> tuple[tuple[CallId, RunState], ...]:
+        if self.backend is not None:
+            return self.backend.state_items()
+        return tuple((path.stem, RunState.model_validate_json(path.read_bytes()))
+                     for path in sorted((self.root / "runs").glob("*.json")))
 
     def _save_state(self, call: CallId, state: RunState) -> None:
         atomic_write(self._path("runs", call), state.model_dump_json(by_alias=True))
 
     def begin(self, claim: Claim, attempt: Attempt) -> None:
+        if self.backend is not None:
+            self.backend.begin(claim, attempt)
+            return
         with self._lock(claim.call):
             self._owned(claim)
             state = self.state(claim.call)
@@ -264,6 +398,9 @@ class Mailbox:
             self._save_state(claim.call, state.model_copy(update={"active": attempt}))
 
     def finish(self, claim: Claim, attempt: Attempt, outcome: AnyOutcome | None) -> None:
+        if self.backend is not None:
+            self.backend.finish(claim, attempt, outcome)
+            return
         with self._lock(claim.call):
             self._owned(claim)
             state = self.state(claim.call)
@@ -274,6 +411,9 @@ class Mailbox:
             ))
 
     def conclude(self, claim: Claim, outcome: AnyOutcome) -> None:
+        if self.backend is not None:
+            self.backend.conclude(claim, outcome)
+            return
         with self._lock(claim.call):
             self._owned(claim)
             state = self.state(claim.call)

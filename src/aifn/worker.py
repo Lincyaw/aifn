@@ -24,7 +24,7 @@ from aifn.engine import (
     faults_of,
 )
 from aifn.files import OutputService, Receipt, RefusalFile, TaskFiles
-from aifn.mailbox import SCRATCH, Claim, Mailbox
+from aifn.mailbox import SCRATCH, Claim, LeaseLost, Mailbox
 from aifn.policy import Corrections, Policy
 from aifn.storage import canonical
 from aifn.submit import bundle
@@ -78,12 +78,13 @@ class Worker:
             if claim is None:
                 continue
             outcome = self.execute(call, claim)
-            self.mailbox.renew(claim, self.policy.lease)
-            result: AnyReturn = Return[Any](
-                id=call.id, function=call.function, outcome=outcome,
-                attempts=self.mailbox.state(call.id).attempts, finished_at=datetime.now(UTC),
-            )
-            self.mailbox.deliver(result, claim)
+            with _Heartbeat(self.mailbox, claim, self.policy.lease) as heartbeat:
+                result: AnyReturn = Return[Any](
+                    id=call.id, function=call.function, outcome=outcome,
+                    attempts=self.mailbox.state(call.id).attempts, finished_at=datetime.now(UTC),
+                )
+                self.mailbox.deliver(result, claim)
+                heartbeat.completed = True
             return self.mailbox.returned(call.id, function.returns)
         return None
 
@@ -242,6 +243,10 @@ class Worker:
             return Failed(fault=Fault.INVALID, detail=str(error))
 
 
+RENEW_RETRY_S = 5.0
+"""How long a heartbeat waits before it retries a failed lease renewal."""
+
+
 class _Heartbeat:
     def __init__(self, mailbox: Mailbox, claim: Claim, lease: timedelta) -> None:
         self.mailbox = mailbox
@@ -250,15 +255,37 @@ class _Heartbeat:
         self.stop = threading.Event()
         self.result: Future[None] = Future()
         self.thread = threading.Thread(target=self._run, daemon=True)
+        self.completed = False
 
     def _run(self) -> None:
         try:
             while not self.stop.wait(self.lease.total_seconds() / 3):
-                self.mailbox.renew(self.claim, self.lease)
+                if not self._renew():
+                    break
         except BaseException as error:
             self.result.set_exception(error)
         else:
             self.result.set_result(None)
+
+    def _renew(self) -> bool:
+        """Renew the lease, retrying a failed renewal while the current lease still holds.
+
+        A store that answers late, as on an overloaded host, keeps the claim as long as one
+        renewal lands before the lease runs out. Returns False when stopped while retrying.
+        """
+        expires = time.monotonic() + self.lease.total_seconds() * 2 / 3
+        while True:
+            started = time.monotonic()
+            try:
+                self.mailbox.renew(self.claim, self.lease)
+                return True
+            except LeaseLost:
+                raise
+            except Exception:
+                if started + RENEW_RETRY_S >= expires:
+                    raise
+            if self.stop.wait(RENEW_RETRY_S):
+                return False
 
     def check(self) -> None:
         if self.result.done():
@@ -276,4 +303,7 @@ class _Heartbeat:
         self.stop.set()
         self.thread.join()
         if error is None:
+            # Successful delivery consumes the claim while its final renewal may still run.
+            if self.completed and isinstance(self.result.exception(), LeaseLost):
+                return
             self.check()

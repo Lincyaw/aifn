@@ -19,7 +19,7 @@ from aifn.declare import (
 )
 from aifn.engine import Engine, EngineCrashed, EngineTimedOut, Session, Transcript
 from aifn.files import TaskFiles, validate_file
-from aifn.mailbox import Claim, LeaseLost, Mailbox
+from aifn.mailbox import Claim, LeaseLost, Mailbox, MailboxBackend
 from aifn.patch import Row, layer
 from aifn.policy import Corrections, Policy
 from aifn.submit import Tools, bundle
@@ -48,6 +48,7 @@ __all__ = [
     "Link",
     "LeaseLost",
     "Mailbox",
+    "MailboxBackend",
     "Model",
     "Outcome",
     "Policy",

@@ -52,6 +52,8 @@ class Fault(StrEnum):
     """The saved output did not validate against the declared model."""
     SETUP = "setup"
     """The workspace or task files could not be prepared."""
+    WITHDRAWN = "withdrawn"
+    """The caller concluded the call while no worker held it, so no attempt will run."""
 
 
 class Call(BaseModel):
