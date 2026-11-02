@@ -7,6 +7,7 @@
 - Add the `dsh-trajectory` 0.1.0 package: DSH v4 JSONL/Zstd to ATIF v1.8 conversion, idempotent SQLite/HTTP ingestion, and cleanup after a matching committed receipt.
 - Allow mailbox events to retain a central archive pointer after successful ingestion.
 - Fix Linux transport path lengths, proxy loopback resolution, writable-child mount ordering, and readonly isolation scaffolding. SRT 0.0.81 compatibility changes are SHA-256 checked before application.
+- Pin the DeepSeek Harness Python SDK to the verified 0.1.5rc1 release, including its bundled launcher used by ACP and explicit runtime selection.
 
 Validated on Linux 6.6 with Node 24 and Python 3.14: 15 existing tests, lint/type checks, and a real DSH/SRT end-to-end run with a local model fixture. The run checks private-file read/write denials, network allowlisting, Pydantic results, and ATIF persistence/cleanup.
 

@@ -1,5 +1,5 @@
 {
-  "recorded_at": "2026-11-02T04:39:05.200575+00:00",
+  "recorded_at": "2026-11-02T05:05:31.961745+00:00",
   "platform": "macOS arm64 development and native Linux x86_64 verification",
   "existing_tests": {
     "passed": 15,
@@ -129,10 +129,18 @@
     ],
     "twine_check": "all four artifacts passed",
     "clean_wheel_install": "macOS Python3.13 and Linux Python3.14; all extras",
-    "linux_wheel_sdk": "0.2.1rc2",
+    "linux_wheel_sdk": "0.1.5rc1",
     "linux_wheel_pydantic": "2.14.2",
     "linux_wheel_e2e": "passed; private read/write denials, allowlisted network,403,model construction,ATIF cleanup",
     "pypi_upload": false,
-    "pypi_reason": "aifn name belongs to a different project"
+    "pypi_reason": "aifn name belongs to a different project",
+    "linux_wheel_existing_tests": {
+      "passed": 15,
+      "skipped": 0,
+      "seconds": 87.46,
+      "environment": "fresh wheel install with all extras"
+    },
+    "sdk_pin_reason": "SDK 0.2.1rc2 bundled launcher cannot load plugin peer dependencies; verified 0.1.5rc1 is pinned for SDK and ACP compatibility",
+    "independent_review": "approved SDK constraint and matching lockfile"
   }
 }

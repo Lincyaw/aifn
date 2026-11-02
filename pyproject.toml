@@ -15,7 +15,8 @@ dependencies = [
 # aifn.engines.deepseek reads it, and a replay reads a recorded transcript, which
 # needs nothing of it.
 deepseek = [
-    "deepseek-harness-sdk>=0.1.5rc1",
+    # Keep the SDK and its optional bundled launcher on the verified release.
+    "deepseek-harness-sdk==0.1.5rc1",
 ]
 trajectory = ["dsh-trajectory==0.1.0"]
 
