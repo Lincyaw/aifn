@@ -1,0 +1,38 @@
+{
+  "name": "dsh-access-policy",
+  "version": "0.1.0",
+  "description": "SRT-backed DSH filesystem and shell providers with explicit task grants",
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "bin": {
+    "dsh-policy": "src/cli.mjs"
+  },
+  "exports": {
+    ".": "./src/services.mjs",
+    "./filesystem": "./src/remote-fs.mjs",
+    "./shell": "./src/shell.mjs",
+    "./policy": "./src/policy.mjs"
+  },
+  "files": [
+    "src",
+    "examples",
+    "README.md",
+    "UPSTREAM.json",
+    "VERIFICATION.json"
+  ],
+  "dependencies": {
+    "@anthropic-ai/sandbox-runtime": "0.0.81",
+    "undici": "8.12.3",
+    "zod": "4.6.6"
+  },
+  "overrides": {
+    "@anthropic-ai/sandbox-runtime": {
+      "zod": "$zod"
+    }
+  },
+  "scripts": {
+    "check": "node --check src/cli.mjs && node --check src/services.mjs && node --check src/remote-fs.mjs && node --check src/shell.mjs && node --check src/fs-worker.mjs && node --check src/launcher.mjs"
+  }
+}

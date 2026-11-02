@@ -1,13 +1,15 @@
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { configuration } from './config.js'
 import { alreadyAnswered, descriptions } from './prompts.js'
+import { schemaValidator } from './schema.js'
 
 export const name = 'aifn-harness'
 export const inject = ['tools', 'permissionPresets']
 
 export function apply(ctx, config = {}) {
-  const { endpoint, token, permission } = configuration(config)
-  let answered = false
+  const { endpoint, token, permission, directory, validation, receipt } = configuration(config)
+  const local = validation === 'json-schema' ? schemaValidator(directory, receipt) : undefined
+  let answered = local?.answered ?? false
 
   ctx.on('agent/created', ({ agent }) => {
     ctx.permissionPresets.set(agent.session, permission)
@@ -21,13 +23,17 @@ export function apply(ctx, config = {}) {
     const parameters = { path: { type: 'string', required: true, description: 'Candidate file path.' } }
     ctx.tools.register(defineTool({
       name: tool,
-      description: descriptions[action],
+      description: local ? descriptions[action].replace('full declared output model and business validators', 'declared JSON Schema') : descriptions[action],
       parameters,
       output: {
         schema: { type: 'object', additionalProperties: true },
         render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
       },
       async execute(args, exec) {
+        exec.signal?.throwIfAborted()
+        let result
+        if (local) result = local.dispatch(action, args.path)
+        else {
         const response = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -37,7 +43,8 @@ export function apply(ctx, config = {}) {
         if (!response.ok) {
           throw new Error(`Output validation service failed (${response.status})`)
         }
-        const result = await response.json()
+        result = await response.json()
+        }
         if (result.submitted === true) {
           answered = true
           exec.concludeTurn()

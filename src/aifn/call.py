@@ -127,6 +127,8 @@ class Returned[O: BaseModel](BaseModel):
     status: Literal[Status.RETURNED] = Status.RETURNED
     value: O
     submitted_json: str | None = Field(default=None, repr=False)
+    validation: Literal["pydantic", "json-schema"] = "pydantic"
+    schema_sha256: str | None = None
     """Original accepted input, used to reconstruct the value without cumulative transforms."""
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import threading
 import time
 from concurrent.futures import Future
@@ -26,6 +27,7 @@ from aifn.engine import (
 from aifn.files import OutputService, Receipt, RefusalFile, TaskFiles
 from aifn.mailbox import SCRATCH, Claim, LeaseLost, Mailbox
 from aifn.policy import Corrections, Policy
+from aifn.schema import construct_model, ensure_constructible, schema_hash
 from aifn.storage import canonical
 from aifn.submit import bundle
 from aifn.terms import WorkerId
@@ -38,6 +40,8 @@ class Worker:
     engine: Engine
     policy: Policy
     id: WorkerId
+    retain_events: bool = True
+    """Keep full mailbox events; false stores a pointer after ATIF commit only."""
 
     def work(self, budget: int | None = None) -> int:
         if budget is not None and budget < 0:
@@ -150,7 +154,7 @@ class Worker:
             return completed, None
         transcript: Transcript
         try:
-            if session.files is None:
+            if session.files is None or function.validation == "json-schema":
                 transcript = self.engine.run(session)
             else:
                 with OutputService(TaskFiles(session.files), function.returns) as service:
@@ -165,12 +169,20 @@ class Worker:
         except (EngineCrashed, EngineTimedOut, ConnectionError, TimeoutError) as error:
             fault = faults_of(error)
             events = error.events if isinstance(error, (EngineCrashed, EngineTimedOut)) else ()
+            if (not self.retain_events and isinstance(error, (EngineCrashed, EngineTimedOut))
+                    and error.archive_receipt is not None):
+                events = ({"type": "trajectory/archived", "data": dict(error.archive_receipt)},)
             self.mailbox.record(call.id, index, events, claim=claim)
             result: AnyOutcome = Failed(fault=fault, detail=str(error))
         else:
             if transcript.session != session.id:
                 raise ValueError("Engine returned another session's transcript")
-            self.mailbox.record(call.id, index, transcript.events, claim=claim,
+            recorded = transcript.events
+            if not self.retain_events and transcript.archive_receipt is not None:
+                recorded = ({
+                    "type": "trajectory/archived", "data": dict(transcript.archive_receipt),
+                },)
+            self.mailbox.record(call.id, index, recorded, claim=claim,
                                 submission=transcript.submission)
             result = self.read(call, transcript)
         completed = active.model_copy(update={
@@ -199,6 +211,8 @@ class Worker:
         # session keeps that id across retries, and a retry that reused the directory would find
         # its own previous attempt's files already there.
         files = TaskFiles(self.mailbox.task_path(call.id) / "attempts" / f"{index}-{session_id}")
+        if function.validation == "json-schema":
+            ensure_constructible(function.returns)
         instruction = call.instruction + (
             f"\n\n## Task files\n\n"
             f"Read input from `{files.root / 'input.json'}`.\n"
@@ -218,6 +232,7 @@ class Worker:
         files.prepare(instruction, dict(call.request), function.returns.model_json_schema(),
                       corrections.reasons)
         tools = bundle(files.root)
+        tools["validation"] = function.validation
         prompt = f"Read `{files.root / 'instruction.md'}` and execute the task in that file."
         return Session(
             id=session_id, prompt=prompt, directory=directory,
@@ -233,8 +248,22 @@ class Worker:
             if transcript.submission is None:
                 return Failed(fault=Fault.NO_ANSWER, detail=describe(transcript.events))
             receipt = Receipt.model_validate(dict(transcript.submission))
+            if receipt.validation == "json-schema":
+                model = RefusalFile if receipt.status == "refused" else function.returns
+                if (function.validation != "json-schema"
+                        or receipt.schema_sha256 != schema_hash(model)):
+                    return Failed(fault=Fault.INVALID, detail="Submitted output schema changed")
             if receipt.status == "refused":
+                if receipt.validation == "json-schema" and function.validation == "json-schema":
+                    assert isinstance(receipt.value, dict)
+                    return Refused.model_construct(reason=receipt.value["reason"])
                 return Refused(reason=RefusalFile.model_validate(receipt.value).reason)
+            if receipt.validation == "json-schema":
+                if function.validation != "json-schema" or receipt.submitted_json is None:
+                    return Failed(fault=Fault.INVALID, detail="Unexpected JSON Schema receipt")
+                value = construct_model(function.returns, json.loads(receipt.submitted_json))
+                return Returned(value=value, submitted_json=receipt.submitted_json,
+                                validation="json-schema", schema_sha256=receipt.schema_sha256)
             value = function.returns.model_validate_json(
                 receipt.submitted_json or canonical(receipt.value)
             )

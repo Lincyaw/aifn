@@ -5,13 +5,14 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Final, Protocol
+from typing import Any, Final, Protocol, cast
 from uuid import uuid4
 
 from filelock import FileLock
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, TypeAdapter
 
 from aifn.call import AnyOutcome, AnyReturn, Attempt, Call, Fault, Return, Returned
+from aifn.schema import construct_model, schema_hash
 from aifn.storage import atomic_write, canonical, component, readable_json
 from aifn.terms import CallId, Event, JsonObject, WorkerId
 
@@ -322,6 +323,19 @@ class Mailbox:
             return None
         raw = json.loads(path.read_text())
         outcome = raw.get("outcome", {})
+        if outcome.get("status") == "returned" and outcome.get("validation") == "json-schema":
+            if outcome.get("schema_sha256") != schema_hash(returns):
+                raise ValueError("Returned value was validated against a different output schema")
+            # Validate the mailbox envelope, then construct the Node-validated value.
+            result = Return[Any].model_validate_json(canonical(raw))
+            if result.id != call:
+                raise ValueError("Conclusion id does not match its filename")
+            value = construct_model(returns, json.loads(outcome["submitted_json"]))
+            reconstructed = Returned[Any].model_construct(
+                value=value, submitted_json=outcome["submitted_json"], validation="json-schema",
+                schema_sha256=outcome["schema_sha256"],
+            )
+            return cast(Return[O], result.model_copy(update={"outcome": reconstructed}))
         if outcome.get("status") == "returned" and outcome.get("submitted_json") is not None:
             outcome["value"] = json.loads(outcome["submitted_json"])
         result = Return[returns].model_validate_json(canonical(raw))  # type: ignore[valid-type]

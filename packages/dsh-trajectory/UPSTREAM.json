@@ -1,0 +1,25 @@
+{
+  "deepseek_harness": {
+    "commit": "ce7073d51254c26cd63b22a60835b8f948deb447",
+    "session_format": 4,
+    "types": "packages/core/session/src/types.ts",
+    "known_events": "packages/core/session/src/known-event-types.ts",
+    "sample": "packages/session/session-persistence/tests/contract.ts"
+  },
+  "harbor": {
+    "commit": "ac533ec72bc506c8a6bf6f296ba6ab80707fad89",
+    "atif": "ATIF-v1.8",
+    "schema_source": "src/harbor/models/trajectories/trajectory.py",
+    "schema_generator": "Pydantic 2.14.2 Trajectory.model_json_schema()"
+  },
+  "sandstorm": {
+    "branch": "dev",
+    "commit": "3714ea26c0fff3654947fcecdbb9e6508ea0bf77",
+    "assessment": "SANDSTORM.md",
+    "integration_executed": false
+  },
+  "generated_files_sha256": {
+    "src/dsh_trajectory/atif.schema.json": "45b07f4bc404335e3a9a4f81d30d67ea64ab0c939e136187c8503e0d7d9d7e04",
+    "src/dsh_trajectory/known_events.txt": "eab792cf1cd67406a4845a6caff710379ac94c580ac2929c79cbc61830ac4711"
+  }
+}

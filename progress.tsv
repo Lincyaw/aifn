@@ -1,0 +1,2 @@
+date	status	existing_tests_passed	native_logs_after_confirmed_ingest	linux_kernel_verified	note
+2026-11-02	keep	14	0	false	SRT providers, private controller directories, Node schema file transport, ATIF archive

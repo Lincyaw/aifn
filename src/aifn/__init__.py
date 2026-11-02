@@ -22,8 +22,10 @@ from aifn.files import TaskFiles, validate_file
 from aifn.mailbox import Claim, LeaseLost, Mailbox, MailboxBackend
 from aifn.patch import Row, layer
 from aifn.policy import Corrections, Policy
+from aifn.sandbox import SrtPolicy
 from aifn.submit import Tools, bundle
 from aifn.terms import CallId, Event, FunctionName, SessionId, WorkerId
+from aifn.trajectory import TrajectoryArchive
 from aifn.worker import Worker
 
 __all__ = [
@@ -61,8 +63,10 @@ __all__ = [
     "SessionId",
     "Stage",
     "Status",
+    "SrtPolicy",
     "Tools",
     "Transcript",
+    "TrajectoryArchive",
     "TaskFiles",
     "validate_file",
     "Worker",

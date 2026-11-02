@@ -24,6 +24,12 @@ BUNDLE_DIR: Final = (
 )
 """Where that bundle's source is, which is what a profile is installed from."""
 
+SRT_DIR: Final = (
+    Path(__file__).resolve().parent / "srt"
+    if (Path(__file__).resolve().parent / "srt").is_dir()
+    else BUNDLE_DIR.parent / "dsh-access-policy"
+)
+
 
 def runtime_bin(dsh_home: Path) -> Path:
     directory = dsh_home.expanduser().resolve() / "aifn-runtime"
@@ -50,6 +56,13 @@ def install_runtime(dsh_home: Path, *, reinstall: bool = False) -> Path:
     directory = dsh_home / "aifn-runtime"
     directory.mkdir(parents=True, exist_ok=True)
     changed = False
+    # Keep launcher code next to this npm root so its pinned imports resolve here.
+    for source in [SRT_DIR / "package.json", *(SRT_DIR / "src").glob("*.mjs")]:
+        target = directory / "policy" / source.relative_to(SRT_DIR)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if not target.is_file() or target.read_bytes() != source.read_bytes():
+            shutil.copyfile(source, target)
+            changed = True
     for name in ("package.json", "package-lock.json"):
         source = BUNDLE_DIR / "runtime" / name
         target = directory / name

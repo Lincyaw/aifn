@@ -3,6 +3,19 @@
   "private": true,
   "version": "0.1.0",
   "dependencies": {
-    "@deepseek-ai/dsh": "0.2.1-alpha.1"
+    "@anthropic-ai/sandbox-runtime": "0.0.81",
+    "@deepseek-ai/dsh": "0.2.1-alpha.1",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "undici": "8.12.3",
+    "zod": "4.6.6"
+  },
+  "overrides": {
+    "@anthropic-ai/sandbox-runtime": {
+      "zod": "$zod"
+    }
+  },
+  "engines": {
+    "node": ">=22.19.0"
   }
 }

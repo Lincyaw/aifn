@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 import secrets
+import stat
 import threading
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -59,6 +61,8 @@ class Receipt(BaseModel):
     status: Literal["returned", "refused"]
     value: JsonValue
     submitted_json: str | None = None
+    validation: Literal["pydantic", "json-schema"] = "pydantic"
+    schema_sha256: str | None = None
 
 
 def error_report(code: str, message: str, **extra: JsonValue) -> dict[str, JsonValue]:
@@ -69,11 +73,24 @@ def validate_file(
     path: Path, model: type[BaseModel]
 ) -> tuple[dict[str, JsonValue], BaseModel | None]:
     try:
-        content = path.read_bytes()
+        content = _read_candidate(path)
     except FileNotFoundError:
         return error_report("file_missing", "File not found. Write the output file first.",
                             file=str(path)), None
     return _validate_json(content, model)
+
+
+def _read_candidate(path: Path) -> bytes:
+    """Open one stable regular-file descriptor; never follow a swapped symlink."""
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    descriptor = os.open(path, flags)
+    with os.fdopen(descriptor, "rb") as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            raise OSError("Output must be a regular file")
+        content = stream.read(16 * 1024 * 1024 + 1)
+        if len(content) > 16 * 1024 * 1024:
+            raise OSError("Output exceeds 16 MiB")
+        return content
 
 
 def _validate_json(
@@ -147,10 +164,12 @@ class OutputService:
                 return error_report("output_path", "Use this task's designated output files only.")
             model = RefusalFile if path == self.files.refusal else self.model
             try:
-                content = path.read_bytes()
+                content = _read_candidate(path)
             except FileNotFoundError:
                 return error_report("file_missing", "File not found. Write the output file first.",
                                     file=str(path))
+            except OSError:
+                return error_report("file_read", "Read a regular output file of at most 16 MiB.")
             report, value = _validate_json(content, model)
             if value is None or request.action == "validate":
                 return report

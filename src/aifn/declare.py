@@ -7,7 +7,7 @@ import tempfile
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from filelock import FileLock
 from pydantic import BaseModel
@@ -133,7 +133,12 @@ class AiFunction[I: BaseModel, O: BaseModel]:
     `Policy`'s.
     """
 
+    validation: Literal["pydantic", "json-schema"] = "pydantic"
+    """JSON Schema mode constructs the returned model without Python validators."""
+
     def __post_init__(self) -> None:
+        if self.validation not in ("pydantic", "json-schema"):
+            raise ValueError("validation must be pydantic or json-schema")
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,57}", self.name):
             raise ValueError("Function name must match [A-Za-z0-9_-]{1,57}")
         if not math.isfinite(self.timeout_s) or self.timeout_s <= 0 or self.attempts < 1:

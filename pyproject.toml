@@ -17,6 +17,10 @@ dependencies = [
 deepseek = [
     "deepseek-harness-sdk>=0.1.5rc1",
 ]
+trajectory = ["dsh-trajectory==0.1.0"]
+
+[tool.uv.sources]
+dsh-trajectory = { path = "packages/dsh-trajectory" }
 
 [build-system]
 requires = ["hatchling"]
@@ -26,7 +30,13 @@ build-backend = "hatchling.build"
 packages = ["src/aifn"]
 
 [tool.hatch.build.targets.wheel.force-include]
-"harness/aifn-harness" = "aifn/harness"
+"harness/aifn-harness/src" = "aifn/harness/src"
+"harness/aifn-harness/package.json" = "aifn/harness/package.json"
+"harness/aifn-harness/cordis.patch.yml" = "aifn/harness/cordis.patch.yml"
+"harness/aifn-harness/runtime/package.json" = "aifn/harness/runtime/package.json"
+"harness/aifn-harness/runtime/package-lock.json" = "aifn/harness/runtime/package-lock.json"
+"harness/dsh-access-policy/src" = "aifn/srt/src"
+"harness/dsh-access-policy/package.json" = "aifn/srt/package.json"
 
 [dependency-groups]
 dev = [
@@ -72,7 +82,7 @@ files = ["src", "tests", "examples"]
 # The SDK ships no py.typed, and only this module and the bundle's loadability test
 # read it.
 [[tool.mypy.overrides]]
-module = ["deepseek_harness.*", "deepseek_harness_runtime.*"]
+module = ["deepseek_harness.*", "deepseek_harness_runtime.*", "dsh_trajectory.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

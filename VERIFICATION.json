@@ -1,0 +1,56 @@
+{
+  "recorded_at": "2026-11-02T03:41:48.927485+00:00",
+  "platform": "macOS arm64; Node 22.23.2; Python 3.13",
+  "existing_tests": {
+    "passed": 14,
+    "skipped": 1
+  },
+  "ruff": "passed",
+  "mypy": {
+    "status": "passed",
+    "files": 31
+  },
+  "node_syntax": "all package .mjs and bundle .js passed",
+  "actual_dsh_consumer": {
+    "status": "passed; real pinned DSH with repository local model fixture",
+    "external_model_api_called": false,
+    "node_schema_feedback_and_submit": true,
+    "unchanged_content_cache_path": true,
+    "node_static_defaults_in_private_canonical_receipt": true,
+    "nested_pydantic_objects": true,
+    "python_business_validators_reexecuted": false,
+    "python_validation_http_service_started": false,
+    "mailbox_raw_events_replaced_after_commit": true,
+    "archived_runs": 1,
+    "atif_trajectories": 1,
+    "native_logs_remaining": 0,
+    "staged_bundles_remaining": 0
+  },
+  "descriptor_read_review": {
+    "concurrent_replacement_attempts": 20000,
+    "private_content_leaks": 0
+  },
+  "fs_worker_protocol": "actual pinned LocalFileSystem resolve/write/stat/text/byte-range/list/EOF consumer passed; no kernel isolation claim",
+  "independent_review": "approved after reported fixes",
+  "wheel": "both wheels built; isolated install/import/resource and nested-object construction passed; no node_modules bundled",
+  "dependency_audit": {
+    "original": {
+      "moderate": 8,
+      "high": 7,
+      "total": 15
+    },
+    "current": {
+      "moderate": 8,
+      "high": 5,
+      "total": 13
+    },
+    "new_direct_dependencies_flagged": []
+  },
+  "not_verified": [
+    "Native Linux SRT kernel enforcement",
+    "Harbor container namespace/seccomp compatibility",
+    "Live external model API",
+    "ACP with SRT (explicitly unsupported)"
+  ],
+  "linux_gate": "SrtPolicy runs doctor before SDK launch; providers must write matching ready nonce before prompt"
+}

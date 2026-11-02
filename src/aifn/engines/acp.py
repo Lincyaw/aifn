@@ -16,6 +16,7 @@ from aifn.bundle import install_bundle, require_bundle
 from aifn.declare import Access
 from aifn.engine import EngineCrashed, EngineTimedOut, Session, Transcript
 from aifn.patch import Row, layer, write
+from aifn.sandbox import SrtPolicy
 from aifn.terms import JsonObject
 
 type Block = dict[str, JsonValue]
@@ -55,8 +56,11 @@ class AcpEngine:
     """One resumed turn's limit, alongside the call-level limit the worker already enforces."""
 
     patches: tuple[Path, ...] = ()
+    sandbox: SrtPolicy | None = None
 
     def run(self, session: Session) -> Transcript:
+        if session.tools.get("validation") == "json-schema":
+            raise ValueError("JSON Schema file transport currently supports fresh SDK sessions")
         if session.continues is None:
             raise ValueError("AcpEngine continues a session; this attempt continues none")
         if session.directory is None or session.files is None:
@@ -74,14 +78,18 @@ class AcpEngine:
             "DSH_PERMISSION_MODE": permission.value,
             "AIFN_TASK_DIRECTORY": str(session.files.resolve()),
         }
+        launch = _launch()
+        home = self.dsh_home.resolve()
+        if self.sandbox is not None:
+            raise ValueError("SRT currently supports fresh SDK sessions; ACP resume is not enabled")
         client = _Client(
             [
-                *_launch(), "--profile", ACP_PROFILE,
+                *launch, "--profile", ACP_PROFILE,
                 *(part for path in self.patches for part in ("--patch", str(path.resolve()))),
                 "--patch", str(patch),
             ],
             cwd=str(session.directory),
-            env={**os.environ, **environment, "DSH_HOME": str(self.dsh_home.resolve())},
+            env={**os.environ, **environment, "DSH_HOME": str(home)},
             timeout_s=self.timeout_s,
         )
         try:

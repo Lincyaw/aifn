@@ -50,18 +50,21 @@ class Transcript:
     session: SessionId
     events: tuple[Event, ...]
     submission: JsonObject | None = None
+    archive_receipt: JsonObject | None = None
 
 
 class EngineCrashed(RuntimeError):
     def __init__(self, detail: str, events: tuple[Event, ...] = ()) -> None:
         super().__init__(detail)
         self.events = events
+        self.archive_receipt: JsonObject | None = None
 
 
 class EngineTimedOut(TimeoutError):
     def __init__(self, detail: str, events: tuple[Event, ...] = ()) -> None:
         super().__init__(detail)
         self.events = events
+        self.archive_receipt: JsonObject | None = None
 
 
 class Engine(Protocol):

@@ -271,3 +271,7 @@ uv build
 
 Tests cover file validation and correction, process concurrency, lease recovery, pipelines, and file submission through the real harness runtime.
 Live model validation runs separately using configured service credentials.
+
+## SRT isolation and ATIF archival
+
+See [SRT, JSON Schema and ATIF](docs/srt-and-atif.md) for independent task/config/trajectory directories, Node-only schema validation with Pydantic object construction, and central archival after commit. The existing Python validation mode remains the default.
