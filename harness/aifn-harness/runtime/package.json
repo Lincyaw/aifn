@@ -4,16 +4,17 @@
   "version": "0.1.0",
   "dependencies": {
     "@anthropic-ai/sandbox-runtime": "0.0.81",
-    "@deepseek-ai/dsh": "0.2.1-alpha.1",
+    "@deepseek-ai/dsh": "0.2.1-rc.5",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "undici": "8.12.3",
-    "zod": "4.6.6"
+    "zod": "4.6.7"
   },
   "overrides": {
-    "@anthropic-ai/sandbox-runtime": {
-      "zod": "$zod"
-    }
+    "zod": "$zod",
+    "undici": "$undici",
+    "fflate": "0.8.3",
+    "@modelcontextprotocol/client": "2.4.0"
   },
   "engines": {
     "node": ">=22.19.0"

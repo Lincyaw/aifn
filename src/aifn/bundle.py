@@ -92,9 +92,8 @@ def install_bundle(dsh_home: Path, *, profile: str = "sdk", reinstall: bool = Fa
     The copy means an edit reaches a session only after reinstalling, and `add` on
     an unchanged spec does nothing, so a reinstall removes first.
 
-    Which profile matters because the bundle is what turns a session into a call: the `sdk`
-    profile serves programmatic clients and the `acp` profile serves session-aware ones, and a
-    call that has to reopen an earlier session runs under the second.
+    The `sdk` profile handles both new sessions and persisted-session restoration through the
+    official Python SDK. Other profile names are passed through to the native plugin installer.
     """
     dsh_home = dsh_home.expanduser().resolve()
     dsh_home.mkdir(parents=True, exist_ok=True)
@@ -105,7 +104,14 @@ def install_bundle(dsh_home: Path, *, profile: str = "sdk", reinstall: bool = Fa
         installed = False
         if manifest.exists():
             installed = BUNDLE_NAME in json.loads(manifest.read_text()).get("dependencies", {})
-        if installed and not reinstall:
+        installed_manifest = directory / "node_modules" / "@aifn" / "dsh-aifn-harness" / (
+            "package.json"
+        )
+        current = installed_manifest.is_file() and (
+            json.loads(installed_manifest.read_text()).get("version")
+            == json.loads((BUNDLE_DIR / "package.json").read_text())["version"]
+        )
+        if installed and current and not reinstall:
             require_bundle(dsh_home, profile=profile)
             return False
         environment = {**os.environ, "DSH_HOME": str(dsh_home)}
@@ -138,6 +144,9 @@ def require_bundle(dsh_home: Path, *, profile: str = "sdk") -> None:
         not installed.is_dir()
         or not manifest.is_file()
         or BUNDLE_NAME not in json.loads(manifest.read_text()).get("dependencies", {})
+        or not (installed / "package.json").is_file()
+        or json.loads((installed / "package.json").read_text()).get("version")
+        != json.loads((BUNDLE_DIR / "package.json").read_text())["version"]
     ):
         command = shlex.join(
             [

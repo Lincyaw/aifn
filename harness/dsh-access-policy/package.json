@@ -25,12 +25,11 @@
   "dependencies": {
     "@anthropic-ai/sandbox-runtime": "0.0.81",
     "undici": "8.12.3",
-    "zod": "4.6.6"
+    "zod": "4.6.7"
   },
   "overrides": {
-    "@anthropic-ai/sandbox-runtime": {
-      "zod": "$zod"
-    }
+    "zod": "$zod",
+    "undici": "$undici"
   },
   "scripts": {
     "check": "node --check src/cli.mjs && node --check src/services.mjs && node --check src/remote-fs.mjs && node --check src/shell.mjs && node --check src/fs-worker.mjs && node --check src/launcher.mjs"

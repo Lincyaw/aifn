@@ -4,15 +4,15 @@ aifn passes tasks to agents through files.
 The caller submits an input file, a worker prepares a task directory, and the agent reads Markdown instructions and JSON input, writes a result file, and calls validation and submission tools.
 The requests directory holds tasks, the conclusions directory holds results, and multiple workers can run concurrently.
 
-## Install v0.2.0
+## Install v0.2.1
 
 Python 3.12–3.14. Install both release wheels together so the optional trajectory
 package resolves without a separate registry publication:
 
 ```sh
 python -m pip install \
-  "aifn[deepseek,trajectory] @ https://github.com/Lincyaw/aifn/releases/download/v0.2.0/aifn-0.2.0-py3-none-any.whl" \
-  "dsh-trajectory @ https://github.com/Lincyaw/aifn/releases/download/v0.2.0/dsh_trajectory-0.1.0-py3-none-any.whl"
+  "aifn[deepseek,trajectory] @ https://github.com/Lincyaw/aifn/releases/download/v0.2.1/aifn-0.2.1-py3-none-any.whl" \
+  "dsh-trajectory @ https://github.com/Lincyaw/aifn/releases/download/v0.2.1/dsh_trajectory-0.1.1-py3-none-any.whl"
 ```
 
 The PyPI name `aifn` belongs to [another project](https://pypi.org/project/aifn/).
@@ -21,11 +21,20 @@ After installing or upgrading, refresh the private Harness home (outside the tas
 workspace):
 
 ```sh
-python -m aifn install --dsh-home /absolute/path/to/private-dsh-home --reinstall
+python -m aifn install --dsh-home /absolute/path/to/private-dsh-home
 ```
 
 For source development, use `uv sync --all-extras`. See [the changelog](CHANGELOG.md)
 and [SRT deployment guide](docs/srt-and-atif.md).
+
+This release uses DeepSeek Harness SDK `0.2.1rc2` and the private npm DSH runtime
+`0.2.1-rc.5`, selected through the SDK’s official `dsh_bin` option. Plugin installation
+and execution use that same runtime. SRT remains at its current latest, `0.0.81`.
+
+`DeepSeekEngine` handles both fresh calls and `Stage.issue(..., continues=session_id)`
+through the SDK’s `resume_session()` API. Preserve native logs with archive
+`cleanup="none"` when continuing a session. SRT currently supports fresh calls only.
+The old `AcpEngine` and `RoutingEngine` have been removed.
 
 ## Minimal call
 

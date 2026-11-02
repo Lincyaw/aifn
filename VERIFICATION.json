@@ -1,20 +1,21 @@
 {
-  "recorded_at": "2026-11-02T05:05:31.961745+00:00",
+  "recorded_at": "2026-11-02T06:40:31.248301+00:00",
   "platform": "macOS arm64 development and native Linux x86_64 verification",
   "existing_tests": {
     "passed": 15,
     "skipped": 0,
-    "platform": "Linux; previous macOS run 14 passed/1 skipped"
+    "platform": "Linux Python3.14; all dependencies upgraded; wheel install",
+    "seconds": 113.22
   },
   "ruff": "passed",
   "mypy": {
     "status": "passed",
-    "files": 32,
-    "platform": "macOS and Linux/Python3.14"
+    "files": 30,
+    "platform": "macOS Python3.13; mypy2.4.1"
   },
   "node_syntax": "all package .mjs and bundle .js passed",
   "actual_dsh_consumer": {
-    "status": "passed; real pinned DSH with repository local model fixture",
+    "status": "passed; DSH0.2.1-rc.5 / SDK0.2.1rc2 / SRT0.0.81 with repository local model fixture",
     "external_model_api_called": false,
     "node_schema_feedback_and_submit": true,
     "unchanged_content_cache_path": true,
@@ -33,8 +34,8 @@
     "private_content_leaks": 0
   },
   "fs_worker_protocol": "actual pinned LocalFileSystem resolve/write/stat/text/byte-range/list/EOF consumer passed; no kernel isolation claim",
-  "independent_review": "approved after Linux compatibility fixes; static review separate from native runtime validation",
-  "wheel": "both wheels built; isolated install/import/resource and nested-object construction passed; no node_modules bundled",
+  "independent_review": "approved latest-dependency/native-SDK changes, removal of ACP/routing, and automatic plugin upgrade",
+  "wheel": "both v0.2.1 wheels built and installed on native Linux; full regression and SRT/ATIF/native SDK resume consumers passed",
   "dependency_audit": {
     "original": {
       "moderate": 8,
@@ -42,11 +43,15 @@
       "total": 15
     },
     "current": {
-      "moderate": 8,
-      "high": 5,
-      "total": 13
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
     },
-    "new_direct_dependencies_flagged": []
+    "new_direct_dependencies_flagged": [],
+    "scope": "production npm lockfile; includes transitive pinned versions"
   },
   "not_verified": [
     "Harbor container namespace/seccomp compatibility",
@@ -70,7 +75,7 @@
       "unlisted network destination explicitly denied by proxy"
     ],
     "isolation": {
-      "cwd": "/data/projects/ops/workspace/aifn/.scratch/linux-20261102-123409/work/subdir",
+      "cwd": "/data/projects/ops/workspace/aifn/.scratch/release-v0.2.1/source/.scratch/linux-20261102-143659/work/subdir",
       "credential": null,
       "hidden": [
         true,
@@ -94,12 +99,12 @@
     "native_logs_remaining": 0,
     "staged_bundles_remaining": 0,
     "mailbox_archive_pointer": true,
-    "base_commit": "915e95a8eab08a4cc4fd416da113a809f9575d2b",
+    "base_commit": "78d84cb7162e1489e07a7eb2e9f6f9c482b79460",
     "external_model_api_called": false,
     "source_sha256": {
-      "src/aifn/runtime_patch.py": "4b50e16529c8d58e06f8a71ca541d88cb3ec0771e03b7339e0b1e58dfc7660e7",
-      "src/aifn/sandbox.py": "d988ddf2ddfbba0c204d7aee942c13d3b14b219ad3974c23970771342151dd0d",
-      "src/aifn/bundle.py": "9b63dfb97cd4883517d18b7e5dffdcc26721e7d6fecf5287427ab32bb9e1c254",
+      "harness/aifn-harness/runtime/package-lock.json": "e6204d0a026653574fc85a780d42a04f712f5c57b00e9f4e6c43b3ba30ed8d54",
+      "harness/aifn-harness/runtime/package.json": "12f89f7f257e2fc95c81fa1625b152aacbc80170818218cf72d8cd8ac17e7432",
+      "harness/aifn-harness/src/index.js": "07c0f6ab1edb86b7baf3a083a52b45ab9f895f298f512710d5d4e935a982096c",
       "harness/dsh-access-policy/src/backend.mjs": "4e45013fccfb9f4c05cd5acb8c3d8a0b17a43e858802a220920eed7ef60fcb58",
       "harness/dsh-access-policy/src/cli.mjs": "4b6ca590d57dc44339f5da89b2e393c6ce2ff5ff6ff0019788eeea25ce1cd9d2",
       "harness/dsh-access-policy/src/fs-worker.mjs": "0b7af10af43b3a21765391cfd851c4390a113186ad082a84a98d1dd411ff55a2",
@@ -110,37 +115,74 @@
       "harness/dsh-access-policy/src/remote-fs.mjs": "ce6324519c75c7e3ca54a2e27567c928f81cc65498e26aeedbab5f6d747f3092",
       "harness/dsh-access-policy/src/services.mjs": "2259bcce63bef3efbc3be220982f2bba80af696f53c454a0e9c802da5a301f87",
       "harness/dsh-access-policy/src/shell.mjs": "5ea14a7289a31a41a586e4b7bcb82f25987326f369cefd71c6e59610f08dcd35",
-      "harness/aifn-harness/src/index.js": "07c0f6ab1edb86b7baf3a083a52b45ab9f895f298f512710d5d4e935a982096c"
+      "src/aifn/bundle.py": "fb00e0a6d2cd6c81d26b861a777e447f92e625827fae251a583eb11a6017eb42",
+      "src/aifn/engines/__init__.py": "1121ea225fe3ee8e0bf45ac5e95cd65ac6e8c865f7dcb13a4749d508fbfcdbbc",
+      "src/aifn/engines/deepseek.py": "41d0e31aa39dd3ac91ac54b123ea2863411f93defa014700abe55ee97d948f44",
+      "src/aifn/runtime_patch.py": "4b50e16529c8d58e06f8a71ca541d88cb3ec0771e03b7339e0b1e58dfc7660e7",
+      "src/aifn/sandbox.py": "d988ddf2ddfbba0c204d7aee942c13d3b14b219ad3974c23970771342151dd0d",
+      "src/aifn/trajectory.py": "7b0ad95d99b80e4b92eecc844864bff23bd07712df31901f00b4cb402c923bb1"
     }
   },
   "unsupported": [
-    "ACP with SRT or JSON Schema file transport"
+    "SRT session restoration"
   ],
   "release_verification": {
-    "version": "0.2.0",
+    "version": "0.2.1",
     "distribution": "GitHub Release",
-    "aifn_harness_bundle": "0.2.0",
-    "trajectory_package": "0.1.0",
+    "aifn_harness_bundle": "0.2.1",
+    "trajectory_package": "0.1.1",
     "artifacts": [
-      "aifn-0.2.0-py3-none-any.whl",
-      "aifn-0.2.0.tar.gz",
-      "dsh_trajectory-0.1.0-py3-none-any.whl",
-      "dsh_trajectory-0.1.0.tar.gz"
+      "aifn-0.2.1-py3-none-any.whl",
+      "aifn-0.2.1.tar.gz",
+      "dsh_trajectory-0.1.1-py3-none-any.whl",
+      "dsh_trajectory-0.1.1.tar.gz"
     ],
-    "twine_check": "all four artifacts passed",
-    "clean_wheel_install": "macOS Python3.13 and Linux Python3.14; all extras",
-    "linux_wheel_sdk": "0.1.5rc1",
+    "linux_wheel_sdk": "0.2.1rc2",
+    "npm_dsh": "0.2.1-rc.5",
+    "srt": "0.0.81 (latest)",
+    "zod": "4.6.7",
     "linux_wheel_pydantic": "2.14.2",
-    "linux_wheel_e2e": "passed; private read/write denials, allowlisted network,403,model construction,ATIF cleanup",
+    "linux_wheel_e2e": "passed; file denials, allowlisted network,403,nested model construction,ATIF cleanup",
+    "linux_wheel_native_resume": "passed; history, current read-only permissions, new JSON output",
     "pypi_upload": false,
     "pypi_reason": "aifn name belongs to a different project",
+    "breaking_removals": [
+      "AcpEngine",
+      "ACP_PROFILE",
+      "RoutingEngine"
+    ],
+    "npm_overrides": {
+      "zod": "4.6.7",
+      "undici": "8.12.3",
+      "fflate": "0.8.3",
+      "@modelcontextprotocol/client": "2.4.0"
+    },
+    "twine_check": "all four final artifacts passed",
+    "clean_wheel_install": "macOS Python3.13 and Linux Python3.14; all extras",
+    "mcp_and_zip_smoke": "DSH MCP plugin import, MCP Client construction, fflate ZIP round trip passed",
     "linux_wheel_existing_tests": {
       "passed": 15,
       "skipped": 0,
-      "seconds": 87.46,
-      "environment": "fresh wheel install with all extras"
-    },
-    "sdk_pin_reason": "SDK 0.2.1rc2 bundled launcher cannot load plugin peer dependencies; verified 0.1.5rc1 is pinned for SDK and ACP compatibility",
-    "independent_review": "approved SDK constraint and matching lockfile"
+      "seconds": 113.22,
+      "environment": "final wheel with all latest dependency overrides"
+    }
+  },
+  "native_sdk_resume": {
+    "status": "passed on macOS and Linux",
+    "same_session_two_processes": true,
+    "history_restored": true,
+    "current_read_only_permissions": true,
+    "new_task_receipt": true,
+    "json_file_transport": true,
+    "original_result_unchanged": true,
+    "live_external_model": false
+  },
+  "upgrade_consumer": {
+    "status": "passed on macOS",
+    "from_version": "0.2.0",
+    "to_version": "0.2.1",
+    "native_cli_remove_add": true,
+    "manual_reinstall_flag_required": false,
+    "repeat_install_idempotent": true
   }
 }

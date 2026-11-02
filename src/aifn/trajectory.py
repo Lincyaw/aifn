@@ -26,7 +26,7 @@ class TrajectoryArchive:
 
     staging: Path
     sink: TrajectorySink
-    harness_version: str = "0.2.1-alpha.1"
+    harness_version: str = "0.2.1-rc.5"
     cleanup: str = "all"
     allow_incomplete: bool = False
 

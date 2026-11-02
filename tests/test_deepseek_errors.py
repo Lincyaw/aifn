@@ -1,12 +1,9 @@
 from __future__ import annotations
 
 import json
-import os
-import shutil
 from pathlib import Path
 
 import pytest
-from deepseek_harness_runtime import resolve_bundled_launch_args
 from pydantic import BaseModel, JsonValue, TypeAdapter
 
 from aifn import (
@@ -21,7 +18,7 @@ from aifn import (
     Worker,
     Workspace,
 )
-from aifn.bundle import require_bundle
+from aifn.bundle import install_bundle, runtime_bin
 from aifn.engines import DeepSeekEngine
 from aifn.engines.deepseek import _turn_error
 from aifn.terms import Event
@@ -68,17 +65,9 @@ class Answer(BaseModel):
 
 
 def test_real_harness_error_reaches_the_saved_result_and_unwrap(tmp_path: Path) -> None:
-    installed = Path(os.environ.get("AIFN_TEST_DSH_HOME", str(Path.home() / ".dsh")))
-    if not (installed / "profiles/sdk/package.json").is_file():
-        pytest.skip("An installed SDK profile is required for the real Harness test.")
-    require_bundle(installed)
-    source = installed / "profiles/sdk"
     home = tmp_path / "dsh"
-    profile = home / "profiles/sdk"
-    shutil.copytree(source, profile, ignore=shutil.ignore_patterns("node_modules"))
-    (profile / "node_modules").symlink_to((source / "node_modules").resolve(),
-                                         target_is_directory=True)
-    executable, = resolve_bundled_launch_args()
+    install_bundle(home)
+    executable = runtime_bin(home)
     instruction = tmp_path / "instruction.md"
     instruction.write_text("Read the supplied event file and report its record count.")
     function = AiFunction(
@@ -89,7 +78,7 @@ def test_real_harness_error_reaches_the_saved_result_and_unwrap(tmp_path: Path) 
     mailbox = Mailbox(root=tmp_path / "mail")
     worker = Worker(
         mailbox=mailbox, registry=Registry(functions={function.name: function}),
-        engine=DeepSeekEngine(dsh_home=home, dsh_bin=Path(executable), env={
+        engine=DeepSeekEngine(dsh_home=home, dsh_bin=executable, env={
             "DEEPSEEK_API_KEY": "",
         }),
         policy=Policy(attempts=1), id="error-propagation",

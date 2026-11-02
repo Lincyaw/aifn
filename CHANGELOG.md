@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.1 — 2026-11-02
+
+- Update DeepSeek Harness SDK to 0.2.1rc2 and npm DSH to latest 0.2.1-rc.5. Refresh all Python dependencies, development tools and npm dependencies; use Zod 4.6.7. SRT latest remains 0.0.81.
+- Restore persisted sessions with the official SDK `resume_session()` API, applying current model settings, working directory and file submission configuration.
+- Remove `AcpEngine`, its handwritten JSON-RPC client, `RoutingEngine`, and their public exports. Use `DeepSeekEngine` for fresh and continued calls.
+- Install and launch plugins with the same private DSH runtime through the SDK’s supported `dsh_bin` option. The error-propagation regression now installs its own profile without global-state dependencies or a skip.
+- Update the trajectory package to 0.1.1 and record the current DSH version in ATIF metadata.
+- Upgrade upstream pinned transitive dependencies to Zod 4.6.7, Undici 8.12.3, MCP client 2.4.0 and fflate 0.8.3. The production npm lockfile audit reports zero findings.
+- Automatically refresh older installed plugin versions through the native plugin CLI; repeated installation is idempotent.
+
 ## 0.2.0 — 2026-11-02
 
 - Add SRT-backed filesystem and Bash providers. Task data, private controller configuration, submission receipts, and trajectories use separate directories.

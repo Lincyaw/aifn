@@ -55,12 +55,7 @@ def _turn_error(events: Sequence[Event]) -> str:
 
 @dataclass(frozen=True, slots=True)
 class DeepSeekEngine:
-    """Run one session with DeepSeek Harness's Python SDK.
-
-    One call is one session and one session is one `harness.run`: the same id
-    continues the same durable conversation, so a second call reusing an id would
-    arrive with the first call's tools and answers already in its history.
-    """
+    """Run fresh or explicitly resumed sessions through the official Python SDK."""
 
     dsh_home: Path
     env: Mapping[str, str] = field(default_factory=dict)
@@ -103,6 +98,11 @@ class DeepSeekEngine:
 
         if session.directory is None:
             raise EngineCrashed("DeepSeekEngine requires a workspace")
+        if session.continues is not None:
+            if session.continues != session.id:
+                raise ValueError("A resumed session must use the session id it continues")
+            if self.sandbox is not None:
+                raise ValueError("SRT currently supports fresh SDK sessions")
         self.prepare()
         permission = Access(session.permission)
         component(session.id)
@@ -187,7 +187,12 @@ class DeepSeekEngine:
             timer = threading.Timer(remaining, expire)
             timer.daemon = True
             timer.start()
-            result = harness.run(session.prompt, session_id=session.id, on_notification=collect)
+            if session.continues is None:
+                active = harness.start_session(session.id)
+            else:
+                active = harness.resume_session(session.id)
+                active.set_working_directory(str(workspace))
+            result = active.run(session.prompt, on_notification=collect)
             if expired.is_set():
                 raise TimeoutError("Session exceeded its time limit")
             if result.finish_reason == "error":

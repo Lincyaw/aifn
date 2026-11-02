@@ -92,7 +92,8 @@ mount 或所需 seccomp 操作，自检会失败；此时需要调整容器配�
 已在 Linux 6.6（TencentOS Server 4，Node 24、Python 3.14）完成真实 SRT 隔离与
 端到端验证：未授权路径读写被拒绝、白名单访问成功、未授权端口返回 403、宿主 loopback
 无法直连。当前 SRT 接入支持 SDK 新会话；
-ACP resume 在配置 SRT 或 JSON Schema 文件传输时明确拒绝启动。
+`DeepSeekEngine` 通过官方 SDK 的 `resume_session()` 恢复会话；配置 SRT 时仍只允许新会话。
+恢复需要保留原生日志：如果会话后续还会继续，归档配置应使用 `cleanup="none"`。
 Shell 输出超过默认 64 KB 捕获上限时只返回尾部；完整输出可重定向到任务内的可写文件。
 
 ## 校验一次，再构造模型
@@ -130,7 +131,7 @@ replay；完整过程分析从中心 ATIF 获取。归档失败时仍保留原 e
 uv run python -m aifn trajectory process \
   --input /var/lib/aifn/trajectories/PROJECT/SESSION \
   --output /var/lib/aifn/spool/TRIAL/ATTEMPT.atif.json.zst \
-  --trial-id TRIAL --attempt-id ATTEMPT --harness-version 0.2.1-alpha.1 \
+  --trial-id TRIAL --attempt-id ATTEMPT --harness-version 0.2.1-rc.5 \
   --endpoint https://trajectories.example.org --cleanup all
 ```
 
