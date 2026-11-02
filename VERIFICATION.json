@@ -1,14 +1,16 @@
 {
-  "recorded_at": "2026-11-02T03:41:48.927485+00:00",
-  "platform": "macOS arm64; Node 22.23.2; Python 3.13",
+  "recorded_at": "2026-11-02T04:39:05.200575+00:00",
+  "platform": "macOS arm64 development and native Linux x86_64 verification",
   "existing_tests": {
-    "passed": 14,
-    "skipped": 1
+    "passed": 15,
+    "skipped": 0,
+    "platform": "Linux; previous macOS run 14 passed/1 skipped"
   },
   "ruff": "passed",
   "mypy": {
     "status": "passed",
-    "files": 31
+    "files": 32,
+    "platform": "macOS and Linux/Python3.14"
   },
   "node_syntax": "all package .mjs and bundle .js passed",
   "actual_dsh_consumer": {
@@ -31,7 +33,7 @@
     "private_content_leaks": 0
   },
   "fs_worker_protocol": "actual pinned LocalFileSystem resolve/write/stat/text/byte-range/list/EOF consumer passed; no kernel isolation claim",
-  "independent_review": "approved after reported fixes",
+  "independent_review": "approved after Linux compatibility fixes; static review separate from native runtime validation",
   "wheel": "both wheels built; isolated install/import/resource and nested-object construction passed; no node_modules bundled",
   "dependency_audit": {
     "original": {
@@ -47,10 +49,71 @@
     "new_direct_dependencies_flagged": []
   },
   "not_verified": [
-    "Native Linux SRT kernel enforcement",
     "Harbor container namespace/seccomp compatibility",
-    "Live external model API",
-    "ACP with SRT (explicitly unsupported)"
+    "Live external model API"
   ],
-  "linux_gate": "SrtPolicy runs doctor before SDK launch; providers must write matching ready nonce before prompt"
+  "linux_gate": "SrtPolicy runs doctor before SDK launch; providers must write matching ready nonce before prompt",
+  "linux_verification": {
+    "host_alias": "team",
+    "repository": "/data/projects/ops/workspace/aifn",
+    "platform": "Linux 6.6.119-49.27.tl4.x86_64 x86_64",
+    "node": "v24.22.1",
+    "python": "3.14.9",
+    "kernel_isolation": true,
+    "checks": [
+      "protected policy snapshot is readable",
+      "ungranted host file content is hidden",
+      "policy snapshot cannot be opened for writing",
+      "agent temporary directory matches the writable scratch grant",
+      "explicit state directory is writable",
+      "host loopback listener is inaccessible directly",
+      "unlisted network destination explicitly denied by proxy"
+    ],
+    "isolation": {
+      "cwd": "/data/projects/ops/workspace/aifn/.scratch/linux-20261102-123409/work/subdir",
+      "credential": null,
+      "hidden": [
+        true,
+        true,
+        true
+      ],
+      "writeBlocked": [
+        true,
+        true,
+        true
+      ],
+      "allowed": "allowlisted-service",
+      "deniedStatus": 403,
+      "denied": true,
+      "rawHostReachable": false
+    },
+    "outside_host_files_unchanged": true,
+    "node_schema_and_pydantic_objects": true,
+    "python_validation_http_service_started": false,
+    "atif_runs": 1,
+    "native_logs_remaining": 0,
+    "staged_bundles_remaining": 0,
+    "mailbox_archive_pointer": true,
+    "base_commit": "915e95a8eab08a4cc4fd416da113a809f9575d2b",
+    "external_model_api_called": false,
+    "source_sha256": {
+      "src/aifn/runtime_patch.py": "4b50e16529c8d58e06f8a71ca541d88cb3ec0771e03b7339e0b1e58dfc7660e7",
+      "src/aifn/sandbox.py": "d988ddf2ddfbba0c204d7aee942c13d3b14b219ad3974c23970771342151dd0d",
+      "src/aifn/bundle.py": "9b63dfb97cd4883517d18b7e5dffdcc26721e7d6fecf5287427ab32bb9e1c254",
+      "harness/dsh-access-policy/src/backend.mjs": "4e45013fccfb9f4c05cd5acb8c3d8a0b17a43e858802a220920eed7ef60fcb58",
+      "harness/dsh-access-policy/src/cli.mjs": "4b6ca590d57dc44339f5da89b2e393c6ce2ff5ff6ff0019788eeea25ce1cd9d2",
+      "harness/dsh-access-policy/src/fs-worker.mjs": "0b7af10af43b3a21765391cfd851c4390a113186ad082a84a98d1dd411ff55a2",
+      "harness/dsh-access-policy/src/launcher.mjs": "9a496e5112b5cf7b432fe6e4683adb34579409c5f5f07c9375d48d0864bb2c6c",
+      "harness/dsh-access-policy/src/policy.mjs": "9e9e016ac948de545326e9e176dc6819f19298838254c35d7dfdd2258c8b8865",
+      "harness/dsh-access-policy/src/probe.mjs": "bb3e4102fd9bb8fd6e7b48255af3dd4e88bd9351a2ae100783d5f388969ac2ac",
+      "harness/dsh-access-policy/src/proxy-fetch.mjs": "d8c1b28eeb30e8ec9ca00da5dda84fb9d698707b2ede0d8f0cc7854db18504ab",
+      "harness/dsh-access-policy/src/remote-fs.mjs": "ce6324519c75c7e3ca54a2e27567c928f81cc65498e26aeedbab5f6d747f3092",
+      "harness/dsh-access-policy/src/services.mjs": "2259bcce63bef3efbc3be220982f2bba80af696f53c454a0e9c802da5a301f87",
+      "harness/dsh-access-policy/src/shell.mjs": "5ea14a7289a31a41a586e4b7bcb82f25987326f369cefd71c6e59610f08dcd35",
+      "harness/aifn-harness/src/index.js": "07c0f6ab1edb86b7baf3a083a52b45ab9f895f298f512710d5d4e935a982096c"
+    }
+  },
+  "unsupported": [
+    "ACP with SRT or JSON Schema file transport"
+  ]
 }

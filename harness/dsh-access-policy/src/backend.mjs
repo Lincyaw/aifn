@@ -1,4 +1,4 @@
-import { access, realpath, stat } from 'node:fs/promises';
+import { access, mkdtemp, realpath, stat } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -10,6 +10,24 @@ const require = createRequire(import.meta.url);
 export const PACKAGE_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 export const SRT_ROOT = path.dirname(path.dirname(require.resolve('@anthropic-ai/sandbox-runtime')));
 export const SRT_VERSION = '0.0.81';
+
+export function payloadEnvironment(temporary) {
+  // /etc/hosts is intentionally hidden. Proxy relays live on namespace loopback;
+  // replace only the terminal host:port, preserving URL-encoded auth/attribution.
+  const proxies = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY', 'all_proxy', 'grpc_proxy', 'GRPC_PROXY', 'FTP_PROXY', 'ftp_proxy', 'DOCKER_HTTP_PROXY', 'DOCKER_HTTPS_PROXY', 'RSYNC_PROXY'];
+  return `export TMPDIR=${quote(temporary)} CLAUDE_CODE_TMPDIR=${quote(temporary)} NO_PROXY='' no_proxy=''; `
+    + proxies.map(name => `export ${name}="\${${name}/%localhost:3128/127.0.0.1:3128}"; export ${name}="\${${name}/%localhost:1080/127.0.0.1:1080}";`).join(' ')
+    + ' export GIT_SSH_COMMAND="${GIT_SSH_COMMAND//PROXY:localhost:/PROXY:127.0.0.1:}"; if [[ ${CLOUDSDK_PROXY_ADDRESS-} == localhost ]]; then export CLOUDSDK_PROXY_ADDRESS=127.0.0.1; fi;';
+}
+
+export async function transportDirectory(policy) {
+  const grants = [...policy.files.read, ...policy.files.write, ...policy.files.runtimeRead, policy.stateDirectory];
+  for (const parent of ['/tmp', '/var/tmp']) {
+    const canonical = await realpath(parent);
+    if (!grants.some(root => contains(root, canonical))) return mkdtemp(path.join(canonical, 'asrt-'));
+  }
+  throw new PolicyError('Keep /tmp or /var/tmp outside the granted roots for private transport sockets');
+}
 
 export async function commandFilesystem(config) {
   await SandboxManager.waitForNetworkInitialization();

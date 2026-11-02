@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdir, realpath } from 'node:fs/promises';
+import { mkdir, realpath, rm } from 'node:fs/promises';
 import { writeFileSync } from 'node:fs';
 import { once } from 'node:events';
 import { createInterface } from 'node:readline';
@@ -7,7 +7,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { SandboxManager } from '@anthropic-ai/sandbox-runtime';
 import { FsError } from '@deepseek-ai/dsh-fs';
-import { commandFilesystem, compileSrt, PACKAGE_ROOT, SRT_ROOT, quote, resolveRuntime } from './backend.mjs';
+import { commandFilesystem, compileSrt, PACKAGE_ROOT, SRT_ROOT, payloadEnvironment, quote, resolveRuntime, transportDirectory } from './backend.mjs';
 import { contains, loadPolicy, validatePaths } from './policy.mjs';
 
 export const name = 'aifn-srt-boundary';
@@ -34,12 +34,14 @@ class Boundary {
     const compiled = compileSrt(this.policy, { tools: this.tools });
     this.srtConfig = compiled.config;
     this.readable = compiled.effective.readable;
-    // Initialize proxy resolution without ambient credentials/proxies; restore controller env immediately.
-    const original = { ...process.env };
-    for (const key of Object.keys(process.env)) delete process.env[key];
-    Object.assign(process.env, this.environment);
-    try { await SandboxManager.initialize(compiled.config); }
-    finally { for (const key of Object.keys(process.env)) delete process.env[key]; Object.assign(process.env, original); }
+    this.transport = await transportDirectory(this.policy);
+    // Other DSH plugins may activate concurrently and need their credentials.
+    // Workload environments are scrubbed separately; only host transport temp paths change here.
+    const temporaryKeys = ['TMPDIR', 'CLAUDE_CODE_TMPDIR'];
+    const original = Object.fromEntries(temporaryKeys.map(key => [key, process.env[key]]));
+    Object.assign(process.env, { TMPDIR: this.transport, CLAUDE_CODE_TMPDIR: this.transport });
+    try { await SandboxManager.initialize(compiled.config); await SandboxManager.waitForNetworkInitialization(); }
+    finally { for (const key of temporaryKeys) { if (original[key] === undefined) delete process.env[key]; else process.env[key] = original[key]; } }
     const argv = await this.wrap([this.tools.node, path.join(PACKAGE_ROOT, 'src', 'fs-worker.mjs')]);
     this.child = spawn(argv[0], argv.slice(1), { cwd: this.policy.cwd, env: this.environment, stdio: ['pipe', 'pipe', 'inherit'] });
     const started = new Promise((resolve, reject) => { this.started = { resolve, reject }; });
@@ -67,7 +69,7 @@ class Boundary {
     if (!this.readable.some(root => contains(root, cwd))) throw new Error('Working directory is outside SRT grants');
     const preload = pathToFileURL(path.join(PACKAGE_ROOT, 'src', 'proxy-fetch.mjs')).href;
     // SRT's cwd parameter is ignored on Linux; change directory inside the boundary.
-    const command = `cd -- ${quote(cwd)} || exit; export NO_PROXY='' no_proxy=''; export NODE_OPTIONS=${quote(`--import=${preload}`)}; exec ${argv.map(quote).join(' ')}`;
+    const command = `cd -- ${quote(cwd)} || exit; ${payloadEnvironment(this.environment.TMPDIR)} export NODE_OPTIONS=${quote(`--import=${preload}`)}; exec ${argv.map(quote).join(' ')}`;
     const spec = await SandboxManager.wrapWithSandboxArgv(command, this.tools.bash, await commandFilesystem(this.srtConfig), signal, cwd);
     return spec.argv;
   }
@@ -108,7 +110,9 @@ class Boundary {
     if (this.child?.pid && this.child.exitCode === null && this.child.signalCode === null) {
       const closed = once(this.child, 'close'); this.child.kill('SIGKILL'); await closed;
     }
-    await SandboxManager.reset(); owned = false; this.ownsManager = false;
+    await SandboxManager.reset();
+    if (this.transport) await rm(this.transport, { recursive: true, force: true });
+    owned = false; this.ownsManager = false;
   }
 }
 

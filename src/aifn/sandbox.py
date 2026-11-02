@@ -13,6 +13,8 @@ from uuid import uuid4
 
 from aifn.declare import Access
 from aifn.engine import Session
+from aifn.patch import Row
+from aifn.runtime_patch import patch_srt
 from aifn.storage import atomic_write, component
 
 
@@ -66,6 +68,7 @@ class SrtPolicy:
             raise ValueError("SRT state_root must be a canonical path")
         workspace = session.directory.resolve()
         runtime = trusted_home.resolve() / "aifn-runtime"
+        patch_srt(runtime)
         for private in (base, *(p.resolve() for p in private_paths)):
             for code in (runtime, Path(node).resolve()):
                 if private.is_relative_to(code) or code.is_relative_to(private):
@@ -119,7 +122,7 @@ class SrtPolicy:
         ready.unlink(missing_ok=True)
         nonce = uuid4().hex
         module = runtime / "policy" / "src"
-        rows = [
+        rows: list[Row] = [
             {"id": name, "disabled": True} for name in (
                 "sandbox", "bash-sandbox", "pwsh-sandbox", "fs-sandbox", "aifn-filesystem",
             )

@@ -4,15 +4,17 @@ import { alreadyAnswered, descriptions } from './prompts.js'
 import { schemaValidator } from './schema.js'
 
 export const name = 'aifn-harness'
-export const inject = ['tools', 'permissionPresets']
+export const inject = ['tools']
 
 export function apply(ctx, config = {}) {
   const { endpoint, token, permission, directory, validation, receipt } = configuration(config)
   const local = validation === 'json-schema' ? schemaValidator(directory, receipt) : undefined
   let answered = local?.answered ?? false
 
-  ctx.on('agent/created', ({ agent }) => {
-    ctx.permissionPresets.set(agent.session, permission)
+  ctx.inject(['permissionPresets'], scope => {
+    scope.on('agent/created', ({ agent }) => {
+      scope.permissionPresets.set(agent.session, permission)
+    })
   })
 
   for (const [action, tool] of [

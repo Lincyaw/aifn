@@ -2,6 +2,7 @@ import { readFile, open, writeFile, unlink } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import net from 'node:net';
+import { tmpdir } from 'node:os';
 
 const [snapshot, canary, marker, temporary, hostPort] = process.argv.slice(2);
 const checks = [];
@@ -18,7 +19,9 @@ try { descriptor = await open(snapshot, 'r+'); }
 catch (error) { if (!['EACCES', 'EPERM', 'EROFS'].includes(error.code)) throw error; }
 if (descriptor) { await descriptor.close(); throw new Error('Policy snapshot is writable'); }
 checks.push('policy snapshot cannot be opened for writing');
-const output = path.join(temporary, `probe-${randomUUID()}`);
+if (tmpdir() !== temporary) throw new Error('SRT overrode the agent temporary directory');
+checks.push('agent temporary directory matches the writable scratch grant');
+const output = path.join(tmpdir(), `probe-${randomUUID()}`);
 await writeFile(output, marker, { flag: 'wx', mode: 0o600 });
 if (await readFile(output, 'utf8') !== marker) throw new Error('Writable state check failed');
 await unlink(output);

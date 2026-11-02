@@ -8,5 +8,11 @@
   "ajv_formats": "3.0.1",
   "undici": "8.12.3",
   "zod": "4.6.6",
-  "atif_schema": "1.8; see packages/dsh-trajectory/UPSTREAM.json"
+  "atif_schema": "1.8; see packages/dsh-trajectory/UPSTREAM.json",
+  "srt_linux_patch": {
+    "implementation": "src/aifn/runtime_patch.py",
+    "original_sha256": "3880ba176ec09e5fdda364b1135fbccd291df5dcd9dd1c3c70da02e15f4f6621",
+    "patched_sha256": "fd9d5ccc0a674a7b08a8297740e387a82d2fe1a4dacd0e3446e508b6fac227dd",
+    "purpose": "restore explicit writable children after readonly parents; remount ungranted read-deny scaffolds readonly"
+  }
 }

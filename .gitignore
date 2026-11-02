@@ -9,6 +9,7 @@ __pycache__/
 .pytest_cache/
 dist/
 node_modules/
+.aifn-srt-patch.lock
 # One run's outbox, inbox and transcripts; here by default, and following the
 # repository would mean nothing.
 mailboxes/

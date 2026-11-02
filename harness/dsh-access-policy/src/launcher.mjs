@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { once } from 'node:events';
 import { SandboxManager } from '@anthropic-ai/sandbox-runtime';
-import { commandFilesystem, compileSrt, PACKAGE_ROOT, SRT_ROOT, quote, resolveRuntime } from './backend.mjs';
+import { commandFilesystem, compileSrt, PACKAGE_ROOT, SRT_ROOT, payloadEnvironment, quote, resolveRuntime } from './backend.mjs';
 import { contains, loadPolicy, PolicyError, policyHash, validatePaths } from './policy.mjs';
 
 let active = false;
@@ -91,21 +91,23 @@ export async function launch({ policyFile, dryRun = false }) {
     await writeFile(snapshotFile, JSON.stringify(snapshot), { mode: 0o400, flag: 'wx' });
     await writeFile(canary, marker, { mode: 0o600, flag: 'wx' });
     environment.DSH_ACCESS_POLICY_HASH = snapshot.hash;
-    replaceEnvironment(environment);
+    // Linux AF_UNIX paths must fit sun_path; agent state paths may be very long.
+    replaceEnvironment({ ...environment, TMPDIR: control, CLAUDE_CODE_TMPDIR: control });
     process.chdir(policy.cwd);
     server = net.createServer(socket => socket.end('host-canary'));
     server.listen(0, '127.0.0.1');
     await once(server, 'listening');
     await SandboxManager.initialize(compiled.config);
     const preload = pathToFileURL(path.join(PACKAGE_ROOT, 'src', 'proxy-fetch.mjs')).href;
-    const command = argv => `export NO_PROXY='' no_proxy=''; export NODE_OPTIONS=${quote(`--import=${preload}`)}; exec ${argv.map(quote).join(' ')}`;
+    const command = argv => `${payloadEnvironment(environment.TMPDIR)} export NODE_OPTIONS=${quote(`--import=${preload}`)}; exec ${argv.map(quote).join(' ')}`;
     const run = async (argv, capture) => {
       const specification = await SandboxManager.wrapWithSandboxArgv(command(argv), tools.bash,
         await commandFilesystem(compiled.config), controller.signal, policy.cwd);
       wrapped = true;
       const chunks = [];
       child = spawn(specification.argv[0], specification.argv.slice(1), {
-        cwd: policy.cwd, env: specification.env, detached: true,
+        cwd: policy.cwd, env: { ...specification.env, TMPDIR: environment.TMPDIR,
+          CLAUDE_CODE_TMPDIR: environment.CLAUDE_CODE_TMPDIR }, detached: true,
         stdio: capture ? ['ignore', 'pipe', 'inherit'] : 'inherit',
       });
       let bytes = 0;

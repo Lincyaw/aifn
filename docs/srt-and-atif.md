@@ -13,6 +13,7 @@
 /opt/aifn/dsh/                      # DSH 安装、profiles、配置、私有提交凭据
 /var/lib/aifn/trajectories/          # 原生 DSH 日志，单独配置
 /var/lib/aifn/spool/                # 待入库 ATIF、重试状态和持久化回执
+/tmp/asrt-*/                       # 短路径私有网络转接目录，进程结束后清理
 ```
 
 业务工作目录不能包含控制目录、DSH 安装目录、trajectory 或 spool。任务交换目录也必须
@@ -70,7 +71,7 @@ engine = DeepSeekEngine(
 `[IPv6]:port`，不接受通配符或 URL 路径。白名单作用于 agent 工具的网络操作；
 DSH 控制进程访问模型服务属于控制平面。JSON Schema 模式不启动本机校验 HTTP 端口。
 
-每次运行先执行真实 Linux `doctor`（未授权文件、只读配置、可写 scratch、宿主
+每次运行先执行真实 Linux `doctor`（未授权文件、只读配置、实际 TMPDIR、可写 scratch、宿主
 loopback 隔离和代理拒绝检查），再启动 providers。Python 在发送 prompt 前还会检查
 本次启动的就绪 nonce；失败会拒绝发送 prompt。CLI：
 
@@ -79,9 +80,18 @@ node /opt/aifn/dsh/aifn-runtime/policy/src/cli.mjs doctor \
   --policy /var/lib/aifn/control/SESSION/policy.json
 ```
 
+安装器为固定 SRT 0.0.81 应用两处 Linux 兼容修正：先恢复只读父目录，再恢复显式可写
+子目录；将未授权区域的 tmpfs 路径骨架设为只读，阻止创建“影子文件”。补丁前后源码
+SHA-256 都固定在 `src/aifn/runtime_patch.py`，未知源码会拒绝启动；原有 denyWrite 与
+凭据 mask 的处理顺序保留。代理 socket 使用短私有路径，避免 Linux Unix socket
+路径长度限制；payload 会恢复授权 TMPDIR，并把内部代理 localhost 改为数字 loopback，
+因此不必向 agent 开放宿主 `/etc/hosts`。
+
 不需要更换 Docker runtime。如果 Harbor 所用容器禁止 user namespace、PID namespace、
 mount 或所需 seccomp 操作，自检会失败；此时需要调整容器配置或改在 Linux 宿主运行。
-本次开发机器是 macOS，尚未完成 Linux 内核隔离实测。当前 SRT 接入支持 SDK 新会话；
+已在 Linux 6.6（TencentOS Server 4，Node 24、Python 3.14）完成真实 SRT 隔离与
+端到端验证：未授权路径读写被拒绝、白名单访问成功、未授权端口返回 403、宿主 loopback
+无法直连。当前 SRT 接入支持 SDK 新会话；
 ACP resume 在配置 SRT 或 JSON Schema 文件传输时明确拒绝启动。
 Shell 输出超过默认 64 KB 捕获上限时只返回尾部；完整输出可重定向到任务内的可写文件。
 

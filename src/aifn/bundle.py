@@ -10,6 +10,8 @@ from typing import Final
 
 from filelock import FileLock
 
+from aifn.runtime_patch import patch_srt
+
 BUNDLE_NAME: Final = "@aifn/dsh-aifn-harness"
 """The dsh bundle's package name.
 
@@ -78,6 +80,7 @@ def install_runtime(dsh_home: Path, *, reinstall: bool = False) -> Path:
             text=True,
             timeout=300,
         )
+    patch_srt(directory)
     return runtime_bin(dsh_home)
 
 
