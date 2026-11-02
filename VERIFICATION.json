@@ -115,5 +115,24 @@
   },
   "unsupported": [
     "ACP with SRT or JSON Schema file transport"
-  ]
+  ],
+  "release_verification": {
+    "version": "0.2.0",
+    "distribution": "GitHub Release",
+    "aifn_harness_bundle": "0.2.0",
+    "trajectory_package": "0.1.0",
+    "artifacts": [
+      "aifn-0.2.0-py3-none-any.whl",
+      "aifn-0.2.0.tar.gz",
+      "dsh_trajectory-0.1.0-py3-none-any.whl",
+      "dsh_trajectory-0.1.0.tar.gz"
+    ],
+    "twine_check": "all four artifacts passed",
+    "clean_wheel_install": "macOS Python3.13 and Linux Python3.14; all extras",
+    "linux_wheel_sdk": "0.2.1rc2",
+    "linux_wheel_pydantic": "2.14.2",
+    "linux_wheel_e2e": "passed; private read/write denials, allowlisted network,403,model construction,ATIF cleanup",
+    "pypi_upload": false,
+    "pypi_reason": "aifn name belongs to a different project"
+  }
 }
