@@ -68,9 +68,8 @@ select = ["E", "F", "I", "UP", "B", "SIM", "TID"]
 "aifn.engines".msg = "a worker holds an Engine, not one engine's name"
 
 [tool.ruff.lint.per-file-ignores]
-# The engines package's __init__ is that package itself, so of course it reads its
-# own modules.
-"src/aifn/engines/__init__.py" = ["TID251"]
+# Engine implementations may read their own package's provider integrations.
+"src/aifn/engines/*.py" = ["TID251"]
 "src/aifn/__main__.py" = ["TID251"]
 "tests/*" = ["TID251"]
 "examples/*" = ["TID251"]

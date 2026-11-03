@@ -1,3 +1,4 @@
 date	status	existing_tests_passed	native_logs_after_confirmed_ingest	linux_kernel_verified	note
 2026-11-02	keep	14	0	false	SRT providers, private controller directories, Node schema file transport, ATIF archive
 2026-11-02	keep	15	0	true	Native Linux SRT, private read/write denials, allowlist403, Node schema and ATIF verified
+2026-11-03	keep	19	0	true	AI Hub session cache affinity; live multi-turn, resumed and fresh sessions verified through a forwarding proxy

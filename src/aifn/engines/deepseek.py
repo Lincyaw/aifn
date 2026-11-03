@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 import sys
 import threading
@@ -10,10 +11,12 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Final
+from urllib.parse import urlsplit
 
 from aifn.bundle import require_bundle, runtime_bin
 from aifn.declare import Access
 from aifn.engine import EngineCrashed, EngineTimedOut, Session, Transcript
+from aifn.engines.aihub import is_aihub, session_api_key
 from aifn.patch import Row, layer, write
 from aifn.sandbox import SrtPolicy
 from aifn.storage import canonical, component
@@ -136,6 +139,13 @@ class DeepSeekEngine:
             "DSH_PERMISSION_MODE": permission.value,
             "AIFN_TASK_DIRECTORY": str(session.files.resolve()),
         }
+        upstream = self.env.get("DEEPSEEK_BASE_URL", os.environ.get("DEEPSEEK_BASE_URL", ""))
+        endpoint = environment.get("DEEPSEEK_BASE_URL", upstream)
+        local_proxy = urlsplit(endpoint).hostname in {"127.0.0.1", "localhost", "::1"}
+        if is_aihub(endpoint) or (local_proxy and is_aihub(upstream)):
+            api_key = environment.get("DEEPSEEK_API_KEY", os.environ.get("DEEPSEEK_API_KEY", ""))
+            if api_key:
+                environment["DEEPSEEK_API_KEY"] = session_api_key(api_key, session.id)
         executable = runtime_bin(self.dsh_home) if self.dsh_bin is None else self.dsh_bin.resolve()
         home = self.dsh_home.resolve()
         sandbox = self.sandbox or SrtPolicy(state_root=home / "aifn-control")
