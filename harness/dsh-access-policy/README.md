@@ -1,6 +1,7 @@
 # aifn SRT providers
 
-Internal Node package for aifn's pinned npm runtime. Install through
+Default file/shell isolation for `DeepSeekEngine`, with grants derived from each
+call's workspace. Internal Node package for aifn's pinned npm runtime. Install through
 `python -m aifn install`; its root lockfile pins SRT 0.0.81, Undici 8.12.3 and
 Zod 4.6.7, including the root override for SRT's Zod import.
 

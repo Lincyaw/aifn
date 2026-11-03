@@ -82,8 +82,10 @@ class SrtPolicy:
             for private in protected:
                 if private.is_relative_to(root.resolve()) or root.resolve().is_relative_to(private):
                     raise ValueError("Task data grants must be disjoint from controller paths")
-        runtime_read = self.runtime_read or tuple(
-            p for p in (Path("/usr/bin"), Path("/usr/lib"), Path("/usr/lib64")) if p.exists()
+        runtime_read = self.runtime_read or (
+            *(p for p in (Path("/usr/bin"), Path("/usr/lib"), Path("/usr/lib64")) if p.exists()),
+            *(Path(binary).resolve() for name in ("bash", "bwrap", "socat", "rg")
+              if (binary := shutil.which(name))),
         )
         for root in runtime_read:
             if any(p.is_relative_to(root.resolve()) or root.resolve().is_relative_to(p)

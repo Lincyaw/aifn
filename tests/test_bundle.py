@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import json
+import secrets
+import shlex
+import subprocess
 import threading
 from collections.abc import Iterator
 from dataclasses import replace
 from datetime import timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 from pydantic import BaseModel, ConfigDict, Field, Json, computed_field, model_validator
@@ -23,6 +26,7 @@ from aifn import (
     Model,
     Policy,
     Registry,
+    SrtPolicy,
     Stage,
     Worker,
     Workspace,
@@ -102,11 +106,13 @@ class Answer(BaseModel):
 
 
 def runtime(path: Path, endpoint: Endpoint) -> tuple[Stage[Request, Answer], Worker]:
+    workspace = path / "workspace"
+    workspace.mkdir()
     instruction = path / "instruction.md"
     instruction.write_text("Read input.json and count entries. Submit the result file.")
     function = AiFunction(name="count", request=Request, returns=Answer, instruction=instruction,
                           model=Model(name="aifn-probe", provider="probe"),
-                          workspace=Workspace(directory=path), timeout_s=20)
+                          workspace=Workspace(directory=workspace), timeout_s=20)
     home = path / "dsh"
     install_bundle(home)
     mailbox = Mailbox(root=path / "mail")
@@ -126,9 +132,10 @@ def test_harness_validates_corrects_and_submits_in_one_session(
     stage, worker = runtime(tmp_path, endpoint)
     source = tmp_path / "request.json"
     source.write_text('{"file":"data.csv"}')
-    business = tmp_path / "business.txt"
+    workspace = tmp_path / "workspace"
+    business = workspace / "business.txt"
     business.write_text("unchanged")
-    handle = stage.issue_file(source, workspace=Workspace(directory=tmp_path, access=access))
+    handle = stage.issue_file(source, workspace=Workspace(directory=workspace, access=access))
     endpoint.responses = [
         tool("write", file_path="$output", content='{"count":0}'),
         tool("validate_output", path="output.json"),
@@ -153,14 +160,14 @@ def test_harness_validates_corrects_and_submits_in_one_session(
     assert business.read_text() == ("unchanged" if access == Access.READ_ONLY else "changed")
     events = stage.mailbox.events(handle.id, 0)
     denied = [event for event in events if event.get("type") == "tool/result"
-              and "FS_SANDBOX_DENIED" in json.dumps(event)]
+              and '"code": "EROFS"' in json.dumps(event)]
     assert len(denied) == (2 if access == Access.READ_ONLY else 1)
     task = stage.mailbox.task_path(handle.id)
     attempt = next((task / "attempts").iterdir())
     assert json.loads((attempt / "input.json").read_text()) == {"file": "data.csv"}
     assert "minimum" in (attempt / "output.schema.json").read_text()
     assert stage.mailbox.enqueue(stage.call(
-        Request(file="data.csv"), workspace=Workspace(directory=tmp_path, access=access),
+        Request(file="data.csv"), workspace=Workspace(directory=workspace, access=access),
     ))[1] is False
     replay_mail = Mailbox(root=tmp_path / "replay")
     original = Call.model_validate_json(
@@ -267,6 +274,115 @@ def test_preparation_failure_does_not_stop_worker(tmp_path: Path, endpoint: Endp
     assert "missing" in result.outcome.detail and len(result.attempts) == 1
     assert worker.mailbox.state(invalid.id).active is None
     assert valid.wait(1).unwrap().count == 3
+
+
+@pytest.mark.parametrize(("access", "validation"), [
+    (Access.WORKSPACE_WRITE, "pydantic"), (Access.FULL_ACCESS, "json-schema"),
+])
+def test_default_srt_hides_controller_files_and_confines_shell(
+    tmp_path: Path, endpoint: Endpoint, access: Access,
+    validation: Literal["pydantic", "json-schema"],
+) -> None:
+    stage, worker = runtime(tmp_path, endpoint)
+    function = replace(stage.function, validation=validation)
+    stage = replace(stage, function=function)
+    worker = replace(worker, registry=Registry(functions={function.name: function}))
+    workspace = tmp_path / "workspace"
+    private = [tmp_path / "dsh" / "controller-secret.json",
+               tmp_path / "dsh" / "trajectories" / "private-log.json",
+               tmp_path / "mail" / "other-task.json"]
+    marker = secrets.token_hex(24)
+    for path in private:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(marker)
+    escape = tmp_path / "outside.txt"
+    link = workspace / "escape"
+    link.symlink_to(private[0])
+    handle = stage.issue(Request(file="data"), workspace=Workspace(
+        directory=workspace, access=access,
+    ))
+    endpoint.responses = [
+        *(tool("read", file_path=str(path)) for path in [*private, link]),
+        tool("write", file_path=str(escape), content="escaped"),
+        tool("bash", description="Verify shell isolation and scrubbed environment", command=(
+            f"cat {shlex.quote(str(private[0]))}; "
+            f"printf escaped > {shlex.quote(str(escape))}; "
+            'printf "%s" "${AIFN_PROBE_API_KEY-unset}" > shell.txt'
+        )),
+        tool("write", file_path="$output", content='{"count":3}'),
+        tool("submit_output", path="output.json"),
+    ]
+    assert worker.work() == 1
+    assert handle.wait(1).unwrap().count == 3
+    assert not escape.exists()
+    assert (workspace / "shell.txt").read_text() == "unset"
+    assert all(path.read_text() == marker for path in private)
+    assert marker not in json.dumps(endpoint.requests)
+    events = stage.mailbox.events(handle.id, 0)
+    denied = [event for event in events if event.get("type") == "tool/result"
+              and '"isError": true' in json.dumps(event)]
+    assert len(denied) == 5
+
+
+def test_resumed_session_uses_current_srt_workspace_and_permission(
+    tmp_path: Path, endpoint: Endpoint,
+) -> None:
+    stage, worker = runtime(tmp_path, endpoint)
+    first = stage.issue(Request(file="first"), workspace=Workspace(
+        directory=tmp_path / "workspace", access=Access.WORKSPACE_WRITE,
+    ))
+    endpoint.responses = [tool("write", file_path="$output", content='{"count":1}'),
+                          tool("submit_output", path="output.json")]
+    assert worker.work() == 1
+    result = first.wait(1)
+    assert result.unwrap().count == 1
+    workspace = tmp_path / "next-workspace"
+    workspace.mkdir()
+    business = workspace / "business.txt"
+    marker = secrets.token_hex(24)
+    business.write_text(marker)
+    old = tmp_path / "workspace" / "escaped.txt"
+    second = stage.issue(Request(file="second"), continues=result.attempts[0].session,
+                         workspace=Workspace(directory=workspace))
+    endpoint.responses = [
+        tool("read", file_path=str(business)),
+        tool("write", file_path=str(business), content="modified"),
+        tool("write", file_path=str(old), content="escaped"),
+        tool("write", file_path="$output", content='{"count":2}'),
+        tool("submit_output", path="output.json"),
+    ]
+    assert worker.work() == 1
+    assert second.wait(1).unwrap().count == 2
+    assert business.read_text() == marker
+    assert not old.exists()
+    assert marker in json.dumps(endpoint.requests[-1])
+    offered = {item["function"]["name"] for item in endpoint.requests[-1]["tools"]}
+    assert "bash" not in offered
+
+
+def test_default_srt_failure_refuses_prompt(
+    tmp_path: Path, endpoint: Endpoint, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stage, worker = runtime(tmp_path, endpoint)
+
+    def unavailable(*args: object, **kwargs: object) -> None:
+        raise _failure
+
+    monkeypatch.setattr(SrtPolicy, "prepare", unavailable)
+    failures = [
+        (subprocess.CalledProcessError(7, ["doctor"], stderr="kernel isolation unavailable"),
+         Fault.CRASHED, "kernel isolation unavailable"),
+        (subprocess.TimeoutExpired(["doctor"], 30), Fault.TIMED_OUT, "self-check timed out"),
+        (RuntimeError("unsupported kernel"), Fault.CRASHED, "unsupported kernel"),
+    ]
+    for index, (_failure, fault, detail) in enumerate(failures):
+        handle = stage.issue(Request(file=str(index)))
+        assert worker.work() == 1
+        result = handle.wait(1)
+        assert isinstance(result.outcome, Failed)
+        assert result.outcome.fault is fault
+        assert detail in result.outcome.detail
+        assert endpoint.requests == []
 
 
 def test_sdk_error_is_recorded_and_worker_continues(tmp_path: Path, endpoint: Endpoint) -> None:

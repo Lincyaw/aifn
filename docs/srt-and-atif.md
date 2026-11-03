@@ -1,7 +1,10 @@
 # SRT、JSON Schema 和 ATIF
 
-推荐路径是 `DeepSeekEngine(sandbox=..., archive=...)` 加上
-`AiFunction(validation="json-schema")`。保留原有 Python 校验模式作为兼容选项。
+`DeepSeekEngine` 默认启用 SRT，从调用入口的 `Workspace.directory` 自动生成任务目录授权，
+不需要重复配置沙箱目录。`sandbox=None` 也表示使用默认策略，不会关闭隔离。
+默认控制状态位于 `dsh_home/aifn-control`，原生日志位于 `dsh_home/trajectories`。
+可用 `sandbox=SrtPolicy(...)` 增加文件和网络授权或定制控制状态目录。
+推荐搭配 `AiFunction(validation="json-schema")`；保留原有 Python 校验模式作为兼容选项。
 
 ## 目录与信任边界
 
@@ -18,7 +21,7 @@
 
 业务工作目录不能包含控制目录、DSH 安装目录、trajectory 或 spool。任务交换目录也必须
 与业务工作目录分开。仅本次任务的交换目录会授予读权限，其 `output/` 子目录可写。
-`Workspace.access` 决定业务工作目录是否可写。
+`Workspace.access` 决定业务工作目录是否可写；`FULL_ACCESS` 也不能突破 SRT 的目录授权。
 
 DSH 控制进程在 SRT 外：它读取配置、访问模型接口、执行 Node 校验并记录 trajectory。
 `ctx.fs` 的所有实际文件操作通过 RPC 交给 SRT 内的常驻文件进程；Bash 每次执行也通过
@@ -31,7 +34,8 @@ Agent 可读：显式授权的任务数据、运行二进制/库代码、自己�
 不挂进 agent 的命名空间。Shell 的环境先清空，再设置 PATH/HOME/TMPDIR；不会继承
 控制进程的模型 API key。`runtime_read` 是必需依赖的只读授权，不能指向含私有配置
 或轨迹的目录。默认仅开放系统二进制与库目录（已存在的 `/usr/bin`、`/usr/lib`、`/usr/lib64`），
-额外加上 Node 可执行文件和已安装 runtime 代码；可用 `runtime_read` 按实际依赖替换系统目录。
+额外加上 Node、Bash、bubblewrap、socat、ripgrep 可执行文件和已安装 runtime 代码；
+非系统安装位置仅授权可执行文件本身。可用 `runtime_read` 按实际依赖替换默认运行依赖授权。
 
 ## 安装与运行
 
@@ -91,8 +95,8 @@ SHA-256 都固定在 `src/aifn/runtime_patch.py`，未知源码会拒绝启动�
 mount 或所需 seccomp 操作，自检会失败；此时需要调整容器配置或改在 Linux 宿主运行。
 已在 Linux 6.6（TencentOS Server 4，Node 24、Python 3.14）完成真实 SRT 隔离与
 端到端验证：未授权路径读写被拒绝、白名单访问成功、未授权端口返回 403、宿主 loopback
-无法直连。当前 SRT 接入支持 SDK 新会话；
-`DeepSeekEngine` 通过官方 SDK 的 `resume_session()` 恢复会话；配置 SRT 时仍只允许新会话。
+无法直连。`DeepSeekEngine` 通过官方 SDK 的 `resume_session()` 恢复会话；
+新会话和恢复会话每次启动均根据当前调用的工作目录、权限和任务文件重新生成 SRT 授权。
 恢复需要保留原生日志：如果会话后续还会继续，归档配置应使用 `cleanup="none"`。
 Shell 输出超过默认 64 KB 捕获上限时只返回尾部；完整输出可重定向到任务内的可写文件。
 

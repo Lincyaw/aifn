@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Enable SRT file and shell isolation for every `DeepSeekEngine` call using its existing workspace declaration. Keep controller configuration, receipts, trajectories and archive staging outside agent grants; deny tool network access by default.
+- Rebuild SRT grants when restoring a session, using the current call's workspace and permissions. Refuse execution when isolation setup fails.
+- Automatically grant read access to required tool executables installed outside system directories without exposing their parent directories.
+
 ## 0.2.1 — 2026-11-02
 
 - Update DeepSeek Harness SDK to 0.2.1rc2 and npm DSH to latest 0.2.1-rc.5. Refresh all Python dependencies, development tools and npm dependencies; use Zod 4.6.7. SRT latest remains 0.0.81.

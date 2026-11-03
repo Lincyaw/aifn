@@ -33,7 +33,7 @@ and execution use that same runtime. SRT remains at its current latest, `0.0.81`
 
 `DeepSeekEngine` handles both fresh calls and `Stage.issue(..., continues=session_id)`
 through the SDK’s `resume_session()` API. Preserve native logs with archive
-`cleanup="none"` when continuing a session. SRT currently supports fresh calls only.
+`cleanup="none"` when continuing a session. Each launch applies SRT grants for the current call.
 The old `AcpEngine` and `RoutingEngine` have been removed.
 
 ## Minimal call
@@ -137,22 +137,29 @@ Task files are stored separately from the business workspace.
 Private copies live under the mailbox's `scratch/<id>/`, which must be outside the source directory.
 The caller coordinates changes to shared writable directories.
 
-### dsh sandbox
+### Default SRT sandbox
 
-The `sdk` profile already includes dsh's `sandbox-local`, `sandbox-policy`, and
-`bash-sandbox` / `pwsh-sandbox` plugins. No additional installation is needed.
-aifn sets their policy from `Workspace.access` and disables approval-based escalation.
+`DeepSeekEngine` always runs file and shell tools through our SRT providers,
+replacing dsh's native sandbox providers. The call's `Workspace.directory` supplies
+the task data grant automatically; no separate sandbox configuration is needed.
 
+- Tools can read the business workspace, this attempt's task files, required runtime
+  code and system libraries, and their own scratch directory.
 - `Access.READ_ONLY` prevents business-file modifications and hides shell tools.
-- `Access.WORKSPACE_WRITE` lets shell commands write within the workspace and the
-  platform's temporary directories. File editors can also write the designated task output.
-- macOS uses Seatbelt (`sandbox-exec`); Linux uses bubblewrap or Landlock.
-  dsh refuses confined commands if no supported backend is available.
+- `Access.WORKSPACE_WRITE` and `Access.FULL_ACCESS` allow business-workspace writes;
+  neither expands the SRT boundary. The attempt's output and scratch are also writable.
+- Tool network access is denied by default. Explicit additional file grants or exact
+  network destinations can be configured with `DeepSeekEngine(sandbox=SrtPolicy(...))`.
+- Configuration, receipts, native trajectories and archive staging remain outside
+  tool grants. The dsh controller accesses the model service outside the sandbox.
 
-This is a write sandbox: host-file reads and network access remain available.
-Keep the mailbox and dsh home outside writable workspaces and platform temporary
-directories, since those paths would otherwise be writable by shell commands too.
+This requires Linux x64/arm64, Node.js >=22.19, bubblewrap, socat, ripgrep and Bash.
+The default private state is `dsh_home/aifn-control`; native trajectories default to
+`dsh_home/trajectories`. Keep dsh home, the mailbox, and archive staging outside the
+business workspace. Overlapping grants or failed isolation checks refuse execution;
+there is no fallback to unrestricted tools.
 Use `private=True` when each call should modify its own copy of the business directory.
+See [the SRT guide](docs/srt-and-atif.md) for custom grants and deployment requirements.
 
 Each worker handles one call at a time, so the worker count determines concurrency.
 `worker.serve()` consumes tasks continuously; `worker.work()` returns when no tasks are available to claim.
@@ -168,7 +175,8 @@ The file queue scans existing tasks for duplicates and is intended for local bat
 
 ## Run the example
 
-Requires Python 3.12 through 3.14, Node.js 22.19 or later, npm, and pnpm.
+Requires Linux x64/arm64, Python 3.12 through 3.14, Node.js 22.19 or later, npm,
+pnpm, bubblewrap, socat, ripgrep and Bash.
 The installer uses the npm release of dsh pinned in `harness/aifn-harness/runtime/package.json` and its lockfile under the selected Harness home.
 
 ```sh

@@ -70,10 +70,12 @@ def test_real_harness_error_reaches_the_saved_result_and_unwrap(tmp_path: Path) 
     executable = runtime_bin(home)
     instruction = tmp_path / "instruction.md"
     instruction.write_text("Read the supplied event file and report its record count.")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
     function = AiFunction(
         name="recording_count", request=Request, returns=Answer, instruction=instruction,
         model=Model(name="deepseek-v4-flash", provider="deepseek-official"),
-        workspace=Workspace(directory=tmp_path), attempts=1, timeout_s=20,
+        workspace=Workspace(directory=workspace), attempts=1, timeout_s=20,
     )
     mailbox = Mailbox(root=tmp_path / "mail")
     worker = Worker(

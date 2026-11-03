@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import subprocess
 import sys
 import threading
 import time
@@ -78,7 +79,11 @@ class DeepSeekEngine:
     """
 
     sandbox: SrtPolicy | None = None
-    """SRT file/shell providers; the trusted DSH controller stays outside."""
+    """Optional SRT grants; None derives the policy from the call's workspace.
+
+    SRT always confines file/shell providers. Its default private state lives at
+    dsh_home/aifn-control; the trusted DSH controller stays outside.
+    """
     archive: TrajectoryArchive | None = None
     trajectory_directory: Path | None = None
     """Native logs, outside task workspaces; defaults to dsh_home/trajectories."""
@@ -98,20 +103,17 @@ class DeepSeekEngine:
 
         if session.directory is None:
             raise EngineCrashed("DeepSeekEngine requires a workspace")
-        if session.continues is not None:
-            if session.continues != session.id:
-                raise ValueError("A resumed session must use the session id it continues")
-            if self.sandbox is not None:
-                raise ValueError("SRT currently supports fresh SDK sessions")
+        if session.continues is not None and session.continues != session.id:
+            raise ValueError("A resumed session must use the session id it continues")
         self.prepare()
         permission = Access(session.permission)
         component(session.id)
         workspace = session.directory.resolve()
-        if self.sandbox is not None and (
+        if (
             self.dsh_home.resolve().is_relative_to(workspace)
             or workspace.is_relative_to(self.dsh_home.resolve())
         ):
-            raise ValueError("DSH home must be separate from the task workspace")
+            raise EngineCrashed("DSH home must be separate from the task workspace")
         tools = dict(session.tools)
         receipt = self.dsh_home.resolve() / "aifn-receipts" / f"{component(session.id)}.json"
         if tools.get("validation") == "json-schema":
@@ -119,10 +121,10 @@ class DeepSeekEngine:
             receipt.unlink(missing_ok=True)
             tools["receipt"] = str(receipt)
         trajectory_root = (self.trajectory_directory or self.dsh_home / "trajectories").resolve()
-        if self.sandbox is not None and session.directory.resolve() in (
+        if session.directory.resolve() in (
             trajectory_root, *trajectory_root.parents,
         ):
-            raise ValueError("Trajectory directory must be outside the task workspace")
+            raise EngineCrashed("Trajectory directory must be outside the task workspace")
         rows: list[Row] = [*layer(tools, permission)]
         rows.append({"id": "session-persistence-jsonl", "config": {"root": str(trajectory_root)}})
         patch = write(rows, self.dsh_home / PATCHES, session.id)
@@ -136,16 +138,22 @@ class DeepSeekEngine:
         }
         executable = runtime_bin(self.dsh_home) if self.dsh_bin is None else self.dsh_bin.resolve()
         home = self.dsh_home.resolve()
-        selected = None
-        if self.sandbox is not None:
-            private = (trajectory_root, *((self.archive.staging,) if self.archive else ()))
-            selected = self.sandbox.prepare(session, home, private)
+        sandbox = self.sandbox or SrtPolicy(state_root=home / "aifn-control")
+        private = (trajectory_root, *((self.archive.staging,) if self.archive else ()))
+        try:
+            selected = sandbox.prepare(session, home, private)
+        except subprocess.TimeoutExpired as error:
+            raise EngineTimedOut("SRT isolation self-check timed out") from error
+        except subprocess.CalledProcessError as error:
+            raise EngineCrashed(f"SRT isolation self-check failed: {error.stderr}") from error
+        except (OSError, ValueError, RuntimeError) as error:
+            raise EngineCrashed(f"SRT preparation failed: {error}") from error
         harness = DeepSeekHarness(
             dsh_home=str(home),
             dsh_bin=str(executable),
             profile=PROFILE,
             patches=(*(str(path.resolve()) for path in self.patches), str(patch.resolve()),
-                     *((str(selected.patch),) if selected else ())),
+                     str(selected.patch)),
             cwd=str(session.directory),
             provider=session.model.provider,
             model=session.model.name,
@@ -176,11 +184,10 @@ class DeepSeekEngine:
         archived = None
         try:
             harness.start()
-            if selected is not None:
-                try:
-                    selected.check_ready()
-                except RuntimeError as error:
-                    raise EngineCrashed(str(error)) from error
+            try:
+                selected.check_ready()
+            except RuntimeError as error:
+                raise EngineCrashed(str(error)) from error
             remaining = session.timeout_s - (time.monotonic() - started)
             if remaining <= 0:
                 raise TimeoutError("Session initialization exceeded its time limit")
