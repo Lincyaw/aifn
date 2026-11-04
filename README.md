@@ -4,15 +4,15 @@ aifn passes tasks to agents through files.
 The caller submits an input file, a worker prepares a task directory, and the agent reads Markdown instructions and JSON input, writes a result file, and calls validation and submission tools.
 The requests directory holds tasks, the conclusions directory holds results, and multiple workers can run concurrently.
 
-## Install v0.2.1
+## Install v0.3.0
 
 Python 3.12–3.14. Install both release wheels together so the optional trajectory
 package resolves without a separate registry publication:
 
 ```sh
 python -m pip install \
-  "aifn[deepseek,trajectory] @ https://github.com/Lincyaw/aifn/releases/download/v0.2.1/aifn-0.2.1-py3-none-any.whl" \
-  "dsh-trajectory @ https://github.com/Lincyaw/aifn/releases/download/v0.2.1/dsh_trajectory-0.1.1-py3-none-any.whl"
+  "aifn[deepseek,trajectory] @ https://github.com/Lincyaw/aifn/releases/download/v0.3.0/aifn-0.3.0-py3-none-any.whl" \
+  "dsh-trajectory @ https://github.com/Lincyaw/aifn/releases/download/v0.3.0/dsh_trajectory-0.1.1-py3-none-any.whl"
 ```
 
 The PyPI name `aifn` belongs to [another project](https://pypi.org/project/aifn/).

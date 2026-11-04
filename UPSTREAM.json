@@ -1,13 +1,13 @@
 {
   "repository": "https://github.com/Lincyaw/aifn.git",
-  "base_commit": "7938dd2f4437fa7605f583610a301f3c2427831b",
-  "dsh_npm": "0.2.1-alpha.1",
-  "dsh_python_sdk": "0.1.5rc1",
+  "base_commit": "49184659ab809086241f27cdf137f9b361532fb1",
+  "dsh_npm": "0.2.1-rc.5",
+  "dsh_python_sdk": "0.2.1rc2",
   "srt": "0.0.81",
   "ajv": "8.20.0",
   "ajv_formats": "3.0.1",
   "undici": "8.12.3",
-  "zod": "4.6.6",
+  "zod": "4.6.7",
   "atif_schema": "1.8; see packages/dsh-trajectory/UPSTREAM.json",
   "srt_linux_patch": {
     "implementation": "src/aifn/runtime_patch.py",

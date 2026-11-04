@@ -1,6 +1,6 @@
 {
   "name": "@aifn/dsh-aifn-harness",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "DeepSeek Harness tools for writing, validating, and submitting aifn result files.",

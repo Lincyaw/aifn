@@ -1,17 +1,17 @@
 {
-  "recorded_at": "2026-11-02T06:40:31.248301+00:00",
-  "platform": "macOS arm64 development and native Linux x86_64 verification",
+  "recorded_at": "2026-11-04T05:58:13+00:00",
+  "platform": "native Linux x86_64 verification",
   "existing_tests": {
-    "passed": 15,
+    "passed": 19,
     "skipped": 0,
-    "platform": "Linux Python3.14; all dependencies upgraded; wheel install",
-    "seconds": 113.22
+    "platform": "Linux Python3.14; source tree and clean release wheel install",
+    "seconds": 193.96
   },
   "ruff": "passed",
   "mypy": {
     "status": "passed",
-    "files": 30,
-    "platform": "macOS Python3.13; mypy2.4.1"
+    "files": 31,
+    "platform": "Linux Python3.14; mypy2.4.1"
   },
   "node_syntax": "all package .mjs and bundle .js passed",
   "actual_dsh_consumer": {
@@ -34,8 +34,8 @@
     "private_content_leaks": 0
   },
   "fs_worker_protocol": "actual pinned LocalFileSystem resolve/write/stat/text/byte-range/list/EOF consumer passed; no kernel isolation claim",
-  "independent_review": "approved latest-dependency/native-SDK changes, removal of ACP/routing, and automatic plugin upgrade",
-  "wheel": "both v0.2.1 wheels built and installed on native Linux; full regression and SRT/ATIF/native SDK resume consumers passed",
+  "independent_review": "pending for the per-call tool set and default-on isolation",
+  "wheel": "both v0.3.0 artifacts built and installed into a clean Linux Python3.14 environment; the same 19 tests and the SRT/ATIF consumer passed there",
   "dependency_audit": {
     "original": {
       "moderate": 8,
@@ -51,11 +51,12 @@
       "total": 0
     },
     "new_direct_dependencies_flagged": [],
-    "scope": "production npm lockfile; includes transitive pinned versions"
+    "scope": "production npm lockfile; includes transitive pinned versions. Rerun for 0.3.0 against the unchanged lockfile."
   },
   "not_verified": [
     "Harbor container namespace/seccomp compatibility",
-    "Live external model API"
+    "Live external model API for this release's own run",
+    "macOS; 0.3.0 was built and verified on Linux only"
   ],
   "linux_gate": "SrtPolicy runs doctor before SDK launch; providers must write matching ready nonce before prompt",
   "linux_verification": {
@@ -72,10 +73,12 @@
       "agent temporary directory matches the writable scratch grant",
       "explicit state directory is writable",
       "host loopback listener is inaccessible directly",
-      "unlisted network destination explicitly denied by proxy"
+      "unlisted network destination explicitly denied by proxy",
+      "a tool outside the declared per-call set is refused before it runs",
+      "a declared MCP server resolves to its mcp__<serverName>__ namespace"
     ],
     "isolation": {
-      "cwd": "/data/projects/ops/workspace/aifn/.scratch/release-v0.2.1/source/.scratch/linux-20261102-143659/work/subdir",
+      "cwd": "/data/projects/ops/workspace/aifn/.scratch/release-v0.3.0/linux-20261104-135813/work/subdir",
       "credential": null,
       "hidden": [
         true,
@@ -99,7 +102,7 @@
     "native_logs_remaining": 0,
     "staged_bundles_remaining": 0,
     "mailbox_archive_pointer": true,
-    "base_commit": "78d84cb7162e1489e07a7eb2e9f6f9c482b79460",
+    "base_commit": "49184659ab809086241f27cdf137f9b361532fb1",
     "external_model_api_called": false,
     "source_sha256": {
       "harness/aifn-harness/runtime/package-lock.json": "e6204d0a026653574fc85a780d42a04f712f5c57b00e9f4e6c43b3ba30ed8d54",
@@ -109,31 +112,79 @@
       "harness/dsh-access-policy/src/cli.mjs": "4b6ca590d57dc44339f5da89b2e393c6ce2ff5ff6ff0019788eeea25ce1cd9d2",
       "harness/dsh-access-policy/src/fs-worker.mjs": "0b7af10af43b3a21765391cfd851c4390a113186ad082a84a98d1dd411ff55a2",
       "harness/dsh-access-policy/src/launcher.mjs": "9a496e5112b5cf7b432fe6e4683adb34579409c5f5f07c9375d48d0864bb2c6c",
-      "harness/dsh-access-policy/src/policy.mjs": "9e9e016ac948de545326e9e176dc6819f19298838254c35d7dfdd2258c8b8865",
+      "harness/dsh-access-policy/src/policy.mjs": "cd6e1add82c45bf23ee9cc15f4205732ccb409b9765afb26069f9e8ec00ae99a",
       "harness/dsh-access-policy/src/probe.mjs": "bb3e4102fd9bb8fd6e7b48255af3dd4e88bd9351a2ae100783d5f388969ac2ac",
       "harness/dsh-access-policy/src/proxy-fetch.mjs": "d8c1b28eeb30e8ec9ca00da5dda84fb9d698707b2ede0d8f0cc7854db18504ab",
       "harness/dsh-access-policy/src/remote-fs.mjs": "ce6324519c75c7e3ca54a2e27567c928f81cc65498e26aeedbab5f6d747f3092",
-      "harness/dsh-access-policy/src/services.mjs": "2259bcce63bef3efbc3be220982f2bba80af696f53c454a0e9c802da5a301f87",
+      "harness/dsh-access-policy/src/services.mjs": "101416e6522cd4494ba3c459f97252c4b2888d95b1370aaec7e84acf184f19d8",
       "harness/dsh-access-policy/src/shell.mjs": "5ea14a7289a31a41a586e4b7bcb82f25987326f369cefd71c6e59610f08dcd35",
       "src/aifn/bundle.py": "fb00e0a6d2cd6c81d26b861a777e447f92e625827fae251a583eb11a6017eb42",
       "src/aifn/engines/__init__.py": "1121ea225fe3ee8e0bf45ac5e95cd65ac6e8c865f7dcb13a4749d508fbfcdbbc",
-      "src/aifn/engines/deepseek.py": "41d0e31aa39dd3ac91ac54b123ea2863411f93defa014700abe55ee97d948f44",
+      "src/aifn/engines/aihub.py": "86a3e2c904017b30fd46cb8aa497a6f6079d683c699d5721fbc68caf9ea90171",
+      "src/aifn/engines/deepseek.py": "40ef85d4582aa794577eab38a5419846cdd81ccb1f5ae4944c449972039db436",
       "src/aifn/runtime_patch.py": "4b50e16529c8d58e06f8a71ca541d88cb3ec0771e03b7339e0b1e58dfc7660e7",
-      "src/aifn/sandbox.py": "d988ddf2ddfbba0c204d7aee942c13d3b14b219ad3974c23970771342151dd0d",
+      "src/aifn/sandbox.py": "c6d8a4fe7319f03a60c6ab08eee0aee6cb0dfce72505ae9fc8cef0ef6d2e19f3",
       "src/aifn/trajectory.py": "7b0ad95d99b80e4b92eecc844864bff23bd07712df31901f00b4cb402c923bb1"
-    }
+    },
+    "tool_set_policy": {
+      "default_policy_tools": {
+        "allow": [
+          "read",
+          "write",
+          "edit",
+          "str_replace_editor",
+          "bash",
+          "validate_output",
+          "submit_output",
+          "refuse_output"
+        ],
+        "mcpServers": []
+      },
+      "declared_tools": {
+        "allow": [
+          "validate_output",
+          "submit_output",
+          "refuse_output",
+          "read",
+          "write",
+          "edit",
+          "bash"
+        ],
+        "mcpServers": [
+          "incident"
+        ]
+      },
+      "explained_tools": {
+        "allowed": [
+          "bash",
+          "edit",
+          "read",
+          "refuse_output",
+          "submit_output",
+          "validate_output",
+          "write"
+        ],
+        "mcpNamespaces": [
+          "mcp__incident__"
+        ]
+      },
+      "undeclared_tool_refused": "str_replace_editor",
+      "result_submitted_with_restricted_set": true
+    },
+    "source_sha256_scope": "sha256 of each file as verified in the working tree at base_commit; the release commit changes none of them"
   },
   "unsupported": [
     "SRT session restoration"
   ],
   "release_verification": {
-    "version": "0.2.1",
+    "version": "0.3.0",
+    "version_choice": "minor; SRT isolation is on for every DeepSeekEngine call, which narrows an existing 0.2.1 consumer's call without a code change on its side",
     "distribution": "GitHub Release",
-    "aifn_harness_bundle": "0.2.1",
+    "aifn_harness_bundle": "0.3.0",
     "trajectory_package": "0.1.1",
     "artifacts": [
-      "aifn-0.2.1-py3-none-any.whl",
-      "aifn-0.2.1.tar.gz",
+      "aifn-0.3.0-py3-none-any.whl",
+      "aifn-0.3.0.tar.gz",
       "dsh_trajectory-0.1.1-py3-none-any.whl",
       "dsh_trajectory-0.1.1.tar.gz"
     ],
@@ -142,47 +193,49 @@
     "srt": "0.0.81 (latest)",
     "zod": "4.6.7",
     "linux_wheel_pydantic": "2.14.2",
-    "linux_wheel_e2e": "passed; file denials, allowlisted network,403,nested model construction,ATIF cleanup",
-    "linux_wheel_native_resume": "passed; history, current read-only permissions, new JSON output",
+    "linux_wheel_filelock": "3.32.7",
+    "linux_wheel_e2e": "passed; file denials, confined shell, allowlisted network,403, nested model construction, ATIF cleanup",
+    "linux_wheel_tool_set_policy": "passed; undeclared str_replace_editor refused, restricted set still submits, mcp__incident__ namespace granted",
     "pypi_upload": false,
     "pypi_reason": "aifn name belongs to a different project",
-    "breaking_removals": [
-      "AcpEngine",
-      "ACP_PROFILE",
-      "RoutingEngine"
+    "breaking_changes": [
+      "SRT file and shell isolation applies to every DeepSeekEngine call, not only one that declares sandbox=SrtPolicy(...)",
+      "tool network access is denied unless SrtPolicy.allow_hosts names a destination",
+      "a call whose isolation setup fails refuses instead of running unconfined"
     ],
-    "npm_overrides": {
-      "zod": "4.6.7",
-      "undici": "8.12.3",
-      "fflate": "0.8.3",
-      "@modelcontextprotocol/client": "2.4.0"
-    },
-    "twine_check": "all four final artifacts passed",
-    "clean_wheel_install": "macOS Python3.13 and Linux Python3.14; all extras",
-    "mcp_and_zip_smoke": "DSH MCP plugin import, MCP Client construction, fflate ZIP round trip passed",
+    "twine_check": "all four artifacts passed",
+    "clean_wheel_install": "Linux Python3.14; deepseek and trajectory extras",
     "linux_wheel_existing_tests": {
-      "passed": 15,
+      "passed": 19,
       "skipped": 0,
-      "seconds": 113.22,
-      "environment": "final wheel with all latest dependency overrides"
-    }
+      "seconds": 178.92,
+      "environment": "clean venv with both release wheels; aifn imported from site-packages"
+    },
+    "consumer_resolution": "context-guided-fault-search resolves aifn 0.3.0 through its uv git pin with no PYTHONPATH override; its MCP, skeleton, game and session test files pass",
+    "end_to_end_game": "not repeated for this release; the closed real-model game recorded by the feature commit is the end-to-end evidence"
+  },
+  "upgrade_consumer": {
+    "status": "passed on Linux",
+    "from_version": "0.2.1",
+    "to_version": "0.3.0",
+    "git_pin_resync": true,
+    "pythonpath_override_required": false,
+    "repeat_install_idempotent": true
   },
   "native_sdk_resume": {
-    "status": "passed on macOS and Linux",
+    "status": "covered by the existing tests on Linux",
     "same_session_two_processes": true,
     "history_restored": true,
     "current_read_only_permissions": true,
-    "new_task_receipt": true,
-    "json_file_transport": true,
-    "original_result_unchanged": true,
+    "srt_grants_rebuilt_on_restore": true,
     "live_external_model": false
   },
-  "upgrade_consumer": {
-    "status": "passed on macOS",
-    "from_version": "0.2.0",
-    "to_version": "0.2.1",
-    "native_cli_remove_add": true,
-    "manual_reinstall_flag_required": false,
-    "repeat_install_idempotent": true
+  "carried_forward": {
+    "from_version": "0.2.1",
+    "items": [
+      "descriptor_read_review",
+      "fs_worker_protocol"
+    ],
+    "reason": "not rerun for 0.3.0; the sources they cover are byte-identical to the 0.2.1 record in source_sha256"
   }
 }
