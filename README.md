@@ -150,6 +150,13 @@ the task data grant automatically; no separate sandbox configuration is needed.
   neither expands the SRT boundary. The attempt's output and scratch are also writable.
 - Tool network access is denied by default. Explicit additional file grants or exact
   network destinations can be configured with `DeepSeekEngine(sandbox=SrtPolicy(...))`.
+- The executable tool set is part of the same policy. `SrtPolicy(tools=...)` declares which
+  registered tools a call may use and defaults to the deployment set above; it must keep
+  `validate_output`, `submit_output` and `refuse_output`, or the declaration is refused.
+  `SrtPolicy(mcp_servers=("incident",))` adds the tools of an MCP server the call mounts,
+  granted by `serverName` because the mcp-client plugin owns that tool namespace. A server a
+  patch layer mounts is advertised to the model and then refused at its first tool call until
+  its policy names it.
 - Configuration, receipts, native trajectories and archive staging remain outside
   tool grants. The dsh controller accesses the model service outside the sandbox.
 

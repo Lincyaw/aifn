@@ -8,12 +8,11 @@ import { pathToFileURL } from 'node:url';
 import { SandboxManager } from '@anthropic-ai/sandbox-runtime';
 import { FsError } from '@deepseek-ai/dsh-fs';
 import { commandFilesystem, compileSrt, PACKAGE_ROOT, SRT_ROOT, payloadEnvironment, quote, resolveRuntime, transportDirectory } from './backend.mjs';
-import { contains, loadPolicy, validatePaths } from './policy.mjs';
+import { contains, loadPolicy, mcpNamespace, validatePaths } from './policy.mjs';
 
 export const name = 'aifn-srt-boundary';
 export const inject = ['tools', 'systemPrompt'];
 let owned = false;
-const ALLOWED_TOOLS = new Set(['read', 'write', 'edit', 'str_replace_editor', 'bash', 'validate_output', 'submit_output', 'refuse_output']);
 
 class Boundary {
   constructor(config) { this.config = config; this.pending = new Map(); this.next = 0; this.ready = new Set(); }
@@ -120,8 +119,16 @@ export async function apply(ctx, config) {
   const boundary = new Boundary(config);
   try { await boundary.init(); } catch (error) { await boundary.close(); throw error; }
   ctx.provide('aifnSrt', boundary);
+  // The tool set this call's policy declares, which defaults to the deployment one. MCP tools
+  // are granted by server, because the mcp-client plugin owns that namespace and composes each
+  // public name inside it; a mounted server stays unreachable until its policy names it.
+  const servers = boundary.policy.tools.mcpServers;
+  const allowed = new Set(boundary.policy.tools.allow);
+  const namespaces = servers.map(mcpNamespace);
+  const permitted = name => typeof name === 'string'
+    && (allowed.has(name) || namespaces.some(namespace => name.startsWith(namespace)));
   ctx.systemPrompt.context({ name: 'deployment:srt', order: 9000, required: true, interpolate: false,
-    text: () => `Agent file and shell operations run under SRT. Readable paths: ${JSON.stringify(boundary.readable)}. Writable paths: ${JSON.stringify([...boundary.policy.files.write, boundary.policy.stateDirectory])}. Network destinations: ${JSON.stringify(boundary.policy.network.allow)}. Deployment escalation cannot widen these grants.` });
-  ctx.tools.guard(call => ALLOWED_TOOLS.has(call.name ?? call.tool?.name) ? undefined : 'This tool is outside the deployment SRT tool set.');
+    text: () => `Agent file and shell operations run under SRT. Readable paths: ${JSON.stringify(boundary.readable)}. Writable paths: ${JSON.stringify([...boundary.policy.files.write, boundary.policy.stateDirectory])}. Network destinations: ${JSON.stringify(boundary.policy.network.allow)}. Deployment escalation cannot widen these grants.${servers.length ? ` Callable tools: ${JSON.stringify(boundary.policy.tools.allow)} and the tools of the MCP servers ${JSON.stringify(servers)}; tools of any other server are refused.` : ''}` });
+  ctx.tools.guard(call => permitted(call.name ?? call.tool?.name) ? undefined : 'This tool is outside the deployment SRT tool set.');
   ctx.on('dispose', () => boundary.close());
 }

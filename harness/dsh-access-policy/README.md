@@ -11,6 +11,11 @@ Controller configuration and trajectories are outside granted agent paths.
 `cli.mjs doctor --policy FILE` checks real Linux isolation before agent prompts.
 See ../../docs/srt-and-atif.md for deployment and verification limits.
 
+The policy also carries the tool set: `tools.allow` names the callable tools and defaults
+to the deployment set when absent, and `tools.mcpServers` grants the `mcp__<serverName>__`
+namespace of an MCP server the call mounts. A declared `tools.allow` must keep
+`validate_output`, `submit_output` and `refuse_output`, or the policy is rejected.
+
 The installer applies a SHA-256 guarded SRT 0.0.81 Linux compatibility patch
 for readonly-parent/writable-child restore ordering and readonly deny scaffolds.
 The implementation and accepted hashes are in `src/aifn/runtime_patch.py`.

@@ -9,6 +9,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Final
 from uuid import uuid4
 
 from aifn.declare import Access
@@ -16,6 +17,13 @@ from aifn.engine import Session
 from aifn.patch import Row
 from aifn.runtime_patch import patch_srt
 from aifn.storage import atomic_write, component
+
+RESULT_TOOLS: Final = ("validate_output", "submit_output", "refuse_output")
+"""aifn's result protocol: a tool set without these cannot deliver an answer at all."""
+DEPLOYMENT_TOOLS: Final = (
+    "read", "write", "edit", "str_replace_editor", "bash", *RESULT_TOOLS,
+)
+"""The tool set a call gets when it declares none: dsh's file and editor tools plus the above."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +56,35 @@ class SrtPolicy:
     write: tuple[Path, ...] = ()
     runtime_read: tuple[Path, ...] = ()
     allow_hosts: tuple[str, ...] = ()
+    tools: tuple[str, ...] = DEPLOYMENT_TOOLS
+    """Which registered tools the agent may call.
+
+    The same kind of grant as the file and network ones, so it travels in the same policy file
+    and is read in the same place. The default is the deployment set: dsh's file and editor
+    tools, `bash`, and aifn's three result tools. Replacing it narrows a call to the tools its
+    task actually needs; `RESULT_TOOLS` must stay in it, because a call that cannot submit or
+    refuse has no way to deliver an answer, and that failure would only show up as a session
+    that ran to its timeout.
+    """
+    mcp_servers: tuple[str, ...] = ()
+    """Which MCP servers' tools the agent may call, by the `serverName` they are mounted under.
+
+    Separate from `tools`, by server rather than by tool name, because the mcp-client plugin
+    owns the `mcp__<serverName>__` namespace and composes each public name from the raw one,
+    normalizing or hashing the tail when it does not fit the model's function-name contract:
+    the namespace is what a caller mounting the server can predict, and it is exactly as wide
+    as the mount it goes with. A mounted server is advertised to the model and then refused at
+    its first tool call until it is named here.
+    """
+
+    def __post_init__(self) -> None:
+        # Here rather than at prepare(): a declaration missing the result protocol is a mistake
+        # in the deployment, and a session that discovers it has already spent the model call.
+        missing = [name for name in RESULT_TOOLS if name not in self.tools]
+        if missing:
+            raise ValueError(
+                f"A declared SRT tool set must keep the result protocol: add {', '.join(missing)}"
+            )
 
     def prepare(
         self, session: Session, trusted_home: Path, private_paths: tuple[Path, ...] = (),
@@ -113,6 +150,7 @@ class SrtPolicy:
             },
             "network": {"allow": list(self.allow_hosts)},
             "environment": {"inherit": []},
+            "tools": {"allow": list(self.tools), "mcpServers": list(self.mcp_servers)},
         }
         policy_file = control / "policy.json"
         atomic_write(policy_file, json.dumps(policy))

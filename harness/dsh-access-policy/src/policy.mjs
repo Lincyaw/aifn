@@ -14,6 +14,13 @@ export const MAX_POLICY_BYTES = 65536;
 const absolute = z.string().min(1).max(4096).refine(value => value.startsWith('/') && !value.includes('\0'),
   'Use an absolute Linux path without NUL bytes');
 const variable = z.string().regex(/^[A-Z_][A-Z0-9_]*$/);
+// The DeepSeek function-name contract, which is what a registered tool is called by.
+const tool = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/, 'Use a registered tool name of [A-Za-z0-9_-]{1,64}');
+// The dsh mcp-client contract for serverName; a policy accepts exactly the names it does.
+const server = z.string().regex(/^[A-Za-z0-9_-]{1,32}$/, 'Use a dsh MCP server name of [A-Za-z0-9_-]{1,32}');
+export const DEPLOYMENT_TOOLS = ['read', 'write', 'edit', 'str_replace_editor', 'bash', 'validate_output', 'submit_output', 'refuse_output'];
+/** The result protocol: a tool set without these cannot deliver an answer at all. */
+export const RESULT_TOOLS = ['validate_output', 'submit_output', 'refuse_output'];
 export const PolicySchema = z.object({
   version: z.literal(1),
   cwd: absolute,
@@ -29,7 +36,18 @@ export const PolicySchema = z.object({
   environment: z.object({
     inherit: z.array(variable).max(128).default([]),
   }).strict().default({ inherit: [] }),
+  tools: z.object({
+    // Absent is the deployment tool set; a declared list replaces it rather than adding to it.
+    allow: z.array(tool).max(64).optional(),
+    mcpServers: z.array(server).max(16).default([]),
+  }).strict().default({ mcpServers: [] }),
 }).strict();
+
+export function mcpNamespace(server) {
+  // The mcp-client plugin owns `mcp__<serverName>__` and derives every public tool name
+  // in it from the raw name; the tail may be normalized or hashed, the namespace may not.
+  return `mcp__${server}__`;
+}
 
 export function contains(parent, child) {
   const relative = path.posix.relative(parent, child);
@@ -84,6 +102,12 @@ export function normalizePolicy(input) {
   }
   policy.environment.inherit = [...new Set(policy.environment.inherit)].sort();
   policy.network.allow = [...new Set(policy.network.allow.map(hostRule))].sort();
+  policy.tools.allow = [...new Set(policy.tools.allow ?? DEPLOYMENT_TOOLS)].sort();
+  policy.tools.mcpServers = [...new Set(policy.tools.mcpServers)].sort();
+  const missing = RESULT_TOOLS.filter(name => !policy.tools.allow.includes(name));
+  if (missing.length) {
+    throw new PolicyError(`A declared tool set must keep the result protocol: add ${missing.join(', ')}`);
+  }
   return policy;
 }
 
@@ -135,6 +159,7 @@ export function explain(policy) {
     writable: [...new Set([...policy.files.write, policy.stateDirectory])].sort(),
     network: { default: 'deny', allowedHosts: policy.network.allow },
     inheritedEnvironmentNames: policy.environment.inherit,
+    tools: { allowed: policy.tools.allow, mcpNamespaces: policy.tools.mcpServers.map(mcpNamespace) },
     note: 'Runtime-specific pseudo-filesystems and launcher support paths are reported by the backend plan.',
   };
 }

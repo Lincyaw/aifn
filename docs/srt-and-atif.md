@@ -26,8 +26,17 @@
 DSH 控制进程在 SRT 外：它读取配置、访问模型接口、执行 Node 校验并记录 trajectory。
 `ctx.fs` 的所有实际文件操作通过 RPC 交给 SRT 内的常驻文件进程；Bash 每次执行也通过
 SRT。两种工具看到相同的文件和网络策略。原生 sandbox/fs/bash provider 被替换或禁用，
-没有再套一层原生 DSH 沙箱。可执行工具限制为 read/write/edit/str_replace_editor/bash
-及三个结果工具；其他工具即使被 profile 注册也会被 guard 拒绝。
+没有再套一层原生 DSH 沙箱。可执行工具集合和文件、网络授权一样写在本次调用的 policy 里，
+由 `SrtPolicy(tools=...)` 声明；默认是部署集合 read/write/edit/str_replace_editor/bash
+及三个结果工具。声明是替换而不是追加，可以把一次调用收窄到它真正需要的工具；集合里必须保留
+`validate_output`/`submit_output`/`refuse_output`，否则构造 `SrtPolicy` 当场报错——交不出结果
+的会话只会跑到超时才暴露。集合外的工具即使被 profile 注册也会被 guard 拒绝。
+
+需要让 agent 使用某个 MCP server 的工具时，在 `SrtPolicy(mcp_servers=("incident",))` 里按
+mcp-client 插件配置的 `serverName` 声明，guard 才放行 `mcp__<serverName>__` 这个命名空间。
+这一项按 server 名而不是工具名：公开工具名由插件从原始名派生，超出模型函数名约定时会被规范化或
+追加 hash，命名空间才是挂载方能预测的部分，而且它和这次挂载一样宽。未声明的 server 即使已经
+挂载并向模型公布了工具，第一次调用仍然被拒绝；默认 `mcp_servers=()` 不放行任何额外工具。
 
 Agent 可读：显式授权的任务数据、运行二进制/库代码、自己的 scratch，以及私有
 `/proc`、`/dev`；SRT 的代理传输 socket 单独开放给内部 relay。没有授权的宿主文件内容被隐藏，`/sys` 也不默认开放。配置和轨迹

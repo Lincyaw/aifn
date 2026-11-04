@@ -22,7 +22,7 @@ from aifn.files import TaskFiles, validate_file
 from aifn.mailbox import Claim, LeaseLost, Mailbox, MailboxBackend
 from aifn.patch import Row, layer
 from aifn.policy import Corrections, Policy
-from aifn.sandbox import SrtPolicy
+from aifn.sandbox import DEPLOYMENT_TOOLS, RESULT_TOOLS, SrtPolicy
 from aifn.submit import Tools, bundle
 from aifn.terms import CallId, Event, FunctionName, SessionId, WorkerId
 from aifn.trajectory import TrajectoryArchive
@@ -38,6 +38,7 @@ __all__ = [
     "CallId",
     "Claim",
     "Corrections",
+    "DEPLOYMENT_TOOLS",
     "Engine",
     "EngineCrashed",
     "EngineTimedOut",
@@ -55,6 +56,7 @@ __all__ = [
     "Outcome",
     "Policy",
     "Refused",
+    "RESULT_TOOLS",
     "Registry",
     "Return",
     "Returned",

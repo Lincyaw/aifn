@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Move the SRT tool set into the per-call policy file, next to the file and network grants it belongs with. `SrtPolicy(tools=...)` declares which registered tools a call may use, defaulting to the deployment set, and `SrtPolicy(mcp_servers=("incident",))` grants the `mcp__<serverName>__` namespace of an MCP server the call mounts. A tool set without `validate_output`, `submit_output` and `refuse_output` is refused when the policy is declared, not mid-session. Declaring neither leaves a call's behaviour unchanged.
 - Enable SRT file and shell isolation for every `DeepSeekEngine` call using its existing workspace declaration. Keep controller configuration, receipts, trajectories and archive staging outside agent grants; deny tool network access by default.
 - Rebuild SRT grants when restoring a session, using the current call's workspace and permissions. Refuse execution when isolation setup fails.
 - Automatically grant read access to required tool executables installed outside system directories without exposing their parent directories.
