@@ -56,6 +56,21 @@ class SrtPolicy:
     write: tuple[Path, ...] = ()
     runtime_read: tuple[Path, ...] = ()
     allow_hosts: tuple[str, ...] = ()
+    unix_sockets: tuple[Path, ...] = ()
+    """Unix socket paths the agent's tools may connect to, such as a container runtime's.
+
+    Granting one costs more on Linux than on macOS and the difference is not ours to hide: the
+    kernel filter SRT uses there decides on the syscall, which carries no path, so a grant for
+    one socket is a grant for every socket the namespace can see. macOS filters by path and
+    receives exactly these. Declare the sockets a call needs either way, and read the Linux grant
+    as what it is: every socket reachable from the session.
+    """
+    local_ports: bool = False
+    """Whether the agent's tools may reach services the deployment runs on localhost.
+
+    A deployment that answers its agent's queries over a local endpoint has to allow this; one
+    whose agent only talks to the model and the files it was granted does not.
+    """
     tools: tuple[str, ...] = DEPLOYMENT_TOOLS
     """Which registered tools the agent may call.
 
@@ -148,7 +163,11 @@ class SrtPolicy:
                     *runtime_read, Path(node).resolve(), runtime,
                 )],
             },
-            "network": {"allow": list(self.allow_hosts)},
+            "network": {
+                "allow": list(self.allow_hosts),
+                "unixSockets": [str(p.resolve()) for p in self.unix_sockets],
+                "localPorts": self.local_ports,
+            },
             "environment": {"inherit": []},
             "tools": {"allow": list(self.tools), "mcpServers": list(self.mcp_servers)},
         }

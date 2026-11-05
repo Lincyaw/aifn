@@ -90,8 +90,11 @@ export function compileSrt(policy, { controlFiles = [], controlDirectory, tools 
       allowedDomains: policy.network.allow,
       deniedDomains: [],
       strictAllowlist: true,
-      allowAllUnixSockets: false,
-      allowLocalBinding: false,
+      // Linux decides on the syscall, which carries no path, so naming one socket grants every
+      // socket the namespace can see; macOS receives the names and filters by them.
+      allowAllUnixSockets: policy.network.unixSockets.length > 0,
+      allowUnixSockets: policy.network.unixSockets,
+      allowLocalBinding: policy.network.localPorts,
     },
     filesystem: {
       denyRead: ['/', '/sys'],

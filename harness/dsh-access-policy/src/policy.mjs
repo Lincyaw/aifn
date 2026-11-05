@@ -32,6 +32,9 @@ export const PolicySchema = z.object({
   }).strict(),
   network: z.object({
     allow: z.array(z.string().max(300)).max(128).default([]),
+    // Named sockets are filtered by path only where the platform can: see SrtPolicy.unix_sockets.
+    unixSockets: z.array(absolute).max(32).default([]),
+    localPorts: z.boolean().default(false),
   }).strict(),
   environment: z.object({
     inherit: z.array(variable).max(128).default([]),
@@ -102,6 +105,7 @@ export function normalizePolicy(input) {
   }
   policy.environment.inherit = [...new Set(policy.environment.inherit)].sort();
   policy.network.allow = [...new Set(policy.network.allow.map(hostRule))].sort();
+  policy.network.unixSockets = [...new Set(policy.network.unixSockets)].sort();
   policy.tools.allow = [...new Set(policy.tools.allow ?? DEPLOYMENT_TOOLS)].sort();
   policy.tools.mcpServers = [...new Set(policy.tools.mcpServers)].sort();
   const missing = RESULT_TOOLS.filter(name => !policy.tools.allow.includes(name));
@@ -157,7 +161,10 @@ export function explain(policy) {
     cwd: policy.cwd,
     readable: [...new Set([...policy.files.read, ...policy.files.runtimeRead, ...policy.files.write, policy.stateDirectory])].sort(),
     writable: [...new Set([...policy.files.write, policy.stateDirectory])].sort(),
-    network: { default: 'deny', allowedHosts: policy.network.allow },
+    network: {
+      default: 'deny', allowedHosts: policy.network.allow,
+      unixSockets: policy.network.unixSockets, localPorts: policy.network.localPorts,
+    },
     inheritedEnvironmentNames: policy.environment.inherit,
     tools: { allowed: policy.tools.allow, mcpNamespaces: policy.tools.mcpServers.map(mcpNamespace) },
     note: 'Runtime-specific pseudo-filesystems and launcher support paths are reported by the backend plan.',
