@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0 — 2026-11-05
+
+- Let a call declare the Unix sockets and the local ports its tools may reach, as `SrtPolicy(unix_sockets=...)` and `SrtPolicy(local_ports=True)`. The policy refused both outright, so a deployment whose agent has to reach a container runtime, or answer its own queries over a local endpoint, had no way to say so and confined that call with something outside aifn instead. Both are grants like the file and network ones, so they travel in the same policy file and are read in the same place. Declaring neither leaves a call's behaviour unchanged.
+
+A socket grant costs more on Linux than on macOS, and `SrtPolicy.unix_sockets` says so rather than hiding it: the kernel filter SRT uses there decides on the syscall, which carries no path, so a grant for one socket is a grant for every socket the namespace can see. macOS filters by path and receives exactly the declared names. Declare the sockets a call needs either way, and read the Linux grant as what it is.
+
+Minor rather than patch because the surface is new, and compatible on its own: an existing policy file parses unchanged with both grants empty, which is the behaviour 0.3.0 had.
+
+Validated on Linux 6.6 with Node 24 and Python 3.14: the 19 existing tests, lint and type checks. The policy schema was exercised directly against the installed Zod: an existing policy parses with `unixSockets: []` and `localPorts: false`, a declared socket and local-port grant parse, a relative socket path is refused, and an unknown network key is still refused.
+
 ## 0.3.0 — 2026-11-04
 
 - Move the SRT tool set into the per-call policy file, next to the file and network grants it belongs with. `SrtPolicy(tools=...)` declares which registered tools a call may use, defaulting to the deployment set, and `SrtPolicy(mcp_servers=("incident",))` grants the `mcp__<serverName>__` namespace of an MCP server the call mounts. A tool set without `validate_output`, `submit_output` and `refuse_output` is refused when the policy is declared, not mid-session. Declaring neither leaves a call's behaviour unchanged.

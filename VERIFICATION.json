@@ -1,16 +1,16 @@
 {
-  "recorded_at": "2026-11-04T05:58:13+00:00",
+  "recorded_at": "2026-11-05T03:23:31+00:00",
   "platform": "native Linux x86_64 verification",
   "existing_tests": {
     "passed": 19,
     "skipped": 0,
     "platform": "Linux Python3.14; source tree and clean release wheel install",
-    "seconds": 193.96
+    "seconds": 169.31
   },
   "ruff": "passed",
   "mypy": {
     "status": "passed",
-    "files": 31,
+    "files": 24,
     "platform": "Linux Python3.14; mypy2.4.1"
   },
   "node_syntax": "all package .mjs and bundle .js passed",
@@ -237,5 +237,15 @@
       "fs_worker_protocol"
     ],
     "reason": "not rerun for 0.3.0; the sources they cover are byte-identical to the 0.2.1 record in source_sha256"
+  },
+  "policy_schema": {
+    "status": "passed",
+    "checks": [
+      "an existing policy parses with unixSockets [] and localPorts false",
+      "a declared socket and local-port grant parse",
+      "a relative socket path is refused",
+      "an unknown network key is refused"
+    ],
+    "platform": "installed Zod in the aifn runtime"
   }
 }
