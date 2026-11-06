@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1 — 2026-11-06
+
+- Read the recorded events of a call line by line on line feeds alone. Events are written without escaping non-ASCII text, so a tool result that holds U+2028, U+2029 or U+0085 puts that character inside a JSON string, and `str.splitlines()` cut the line there: reading the events of such a call, for its token usage or for a replay, raised `JSONDecodeError` although every line of the file was valid. The mailbox and the replay engine now split the bytes, which break only at line feeds and carriage returns, and JSON escapes both inside strings. Nothing written changes, so every existing mailbox reads as it is.
+
+Validated on Linux 6.6 with Python 3.12: a recorded mailbox whose two event files held U+2028 inside tool results, which raised before, reads its 451 and 340 events; the existing tests, lint and type checks.
+
 ## 0.4.0 — 2026-11-05
 
 - Let a call declare the Unix sockets and the local ports its tools may reach, as `SrtPolicy(unix_sockets=...)` and `SrtPolicy(local_ports=True)`. The policy refused both outright, so a deployment whose agent has to reach a container runtime, or answer its own queries over a local endpoint, had no way to say so and confined that call with something outside aifn instead. Both are grants like the file and network ones, so they travel in the same policy file and are read in the same place. Declaring neither leaves a call's behaviour unchanged.

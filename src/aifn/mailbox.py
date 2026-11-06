@@ -88,7 +88,9 @@ class MailboxBackend(Protocol):
 
 def read_events(path: Path) -> Sequence[Event]:
     adapter = TypeAdapter(list[dict[str, Any]])
-    return adapter.validate_python([json.loads(line) for line in path.read_text().splitlines()])
+    # Events are written without escaping non-ASCII text, so a line can hold U+2028 or U+0085
+    # inside a string; bytes split only at line feeds and carriage returns, which JSON escapes.
+    return adapter.validate_python([json.loads(line) for line in path.read_bytes().splitlines()])
 
 
 @dataclass(frozen=True, slots=True)

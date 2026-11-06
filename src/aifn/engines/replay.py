@@ -41,8 +41,10 @@ class ReplayEngine:
                     raise FileNotFoundError(path)
                 path = self.directory / component(call) / f"{int(attempt)}.jsonl"
         adapter = TypeAdapter(dict[str, JsonValue])
+        # Recorded events can hold U+2028 or U+0085 inside a string, which only a split of
+        # the bytes leaves whole.
         events = tuple(
-            adapter.validate_python(json.loads(line)) for line in path.read_text().splitlines()
+            adapter.validate_python(json.loads(line)) for line in path.read_bytes().splitlines()
         )
         receipt = path.with_suffix(".submission.json")
         submission = adapter.validate_json(receipt.read_bytes()) if receipt.exists() else None
