@@ -1,6 +1,6 @@
 [project]
 name = "aifn"
-version = "0.5.0"
+version = "0.5.1"
 description = "AI functions: a declared signature, an agent call for a body, requests and conclusions in between"
 readme = "README.md"
 requires-python = ">=3.12,<3.15"

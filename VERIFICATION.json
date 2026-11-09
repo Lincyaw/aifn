@@ -1,11 +1,11 @@
 {
-  "recorded_at": "2026-11-09T03:42:30+00:00",
+  "recorded_at": "2026-11-09T09:40:00+00:00",
   "platform": "native Linux x86_64 verification",
   "existing_tests": {
     "passed": 19,
     "skipped": 0,
     "platform": "Linux Python3.14; source tree",
-    "seconds": 183.56
+    "seconds": 204.38
   },
   "ruff": "passed",
   "mypy": {
@@ -258,6 +258,16 @@
       "the call submits its answer"
     ],
     "platform": "Linux Node v24.22.1, Python3.14; repository local probe endpoint",
+    "external_model_api_called": false
+  },
+  "pending_scan": {
+    "status": "passed",
+    "checks": [
+      "on a copy of a recorded mailbox with 21,652 requests and 13,944 conclusions, the scan yields the same 7,676 calls in the same order as 0.5.0, by a digest of every yielded call",
+      "its peak memory falls from 716 MB to 46 MB",
+      "its first call comes after 1.2 s instead of 6.0 s"
+    ],
+    "platform": "Linux Python3.14",
     "external_model_api_called": false
   }
 }

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1 — 2026-11-09
+
+- Scan for pending calls without holding the mailbox in memory. `Mailbox.pending()` parsed every request into a list before it sorted them, so each worker held every request the mailbox ever received, concluded ones included, and a process keeps that peak for its whole life: on a mailbox of 21,652 requests a worker held about 700 MB before it ran a call, and parsed them all again for every call it took. The scan now skips a request whose conclusion exists by its file name before reading it, keeps only the order of the others, and reads each call again when it yields it. It yields the same calls in the same order, so nothing written changes.
+
+Validated on Linux 6.6 with Python 3.14: the 19 existing tests, lint and type checks. On a copy of a recorded mailbox with 21,652 requests and 13,944 conclusions, the scan yields the same 7,676 calls in the same order as 0.5.0, its peak memory falls from 716 MB to 46 MB, and its first call comes after 1.2 s instead of 6.0 s. No external model API was called.
+
 ## 0.5.0 — 2026-11-09
 
 - Let a deployment leave a call's tools to the harness's own sandbox with `DeepSeekEngine(sandbox=NativeSandbox())`. SRT reaches only the network destinations a policy names exactly and takes no wildcard, so a deployment that trusts its agents with any destination, such as one whose agents build and run services, had no way to say so. Under `NativeSandbox` the harness's own sandbox decides by the call's `Access`, on file effects alone: a `FULL_ACCESS` call is not confined at all, its tools read and write wherever the runtime process can and reach any network destination, and its shell starts from the runtime's environment less the credential-shaped names and `DSH_*` values the harness scrubs from every child. `sandbox=None` keeps deriving the default SRT policy.
