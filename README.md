@@ -159,6 +159,9 @@ supplies the task data grant automatically; no separate sandbox configuration is
   granted by `serverName` because the mcp-client plugin owns that tool namespace. A server a
   patch layer mounts is advertised to the model and then refused at its first tool call until
   its policy names it.
+- dsh's `grep` and `glob` run ripgrep from the trusted controller, outside SRT, so a call that
+  declares them in `tools` may search only below its read grants: each search root is resolved
+  through its symlinks and refused when it lies outside them.
 - Configuration, receipts, native trajectories and archive staging remain outside
   tool grants. The dsh controller accesses the model service outside the sandbox.
 

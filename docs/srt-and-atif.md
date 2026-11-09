@@ -37,6 +37,9 @@ SRT。两种工具看到相同的文件和网络策略。原生 sandbox/fs/bash 
 及三个结果工具。声明是替换而不是追加，可以把一次调用收窄到它真正需要的工具；集合里必须保留
 `validate_output`/`submit_output`/`refuse_output`，否则构造 `SrtPolicy` 当场报错——交不出结果
 的会话只会跑到超时才暴露。集合外的工具即使被 profile 注册也会被 guard 拒绝。
+DSH 的 `grep` 和 `glob` 由 SRT 外的控制进程直接启动 ripgrep，读取不经过 SRT。
+声明了它们的调用只能在读授权范围内搜索：guard 按 ripgrep 的工作目录解析搜索根目录，先按字面路径、再按符号链接解析后的真实路径检查，任一不在读授权内就拒绝。
+ripgrep 不跟随搜索根目录下的符号链接。
 
 需要让 agent 使用某个 MCP server 的工具时，在 `SrtPolicy(mcp_servers=("incident",))` 里按
 mcp-client 插件配置的 `serverName` 声明，guard 才放行 `mcp__<serverName>__` 这个命名空间。

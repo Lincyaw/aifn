@@ -15,6 +15,8 @@ The policy also carries the tool set: `tools.allow` names the callable tools and
 to the deployment set when absent, and `tools.mcpServers` grants the `mcp__<serverName>__`
 namespace of an MCP server the call mounts. A declared `tools.allow` must keep
 `validate_output`, `submit_output` and `refuse_output`, or the policy is rejected.
+dsh's `grep` and `glob` spawn ripgrep from the trusted process, so `services.mjs` refuses
+a search root of theirs that lies outside the read grants, lexically or through symlinks.
 
 The installer applies a SHA-256 guarded SRT 0.0.81 Linux compatibility patch
 for readonly-parent/writable-child restore ordering and readonly deny scaffolds.

@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { mkdir, realpath, rm } from 'node:fs/promises';
-import { writeFileSync } from 'node:fs';
+import { realpathSync, writeFileSync } from 'node:fs';
 import { once } from 'node:events';
 import { createInterface } from 'node:readline';
 import path from 'node:path';
@@ -127,8 +127,25 @@ export async function apply(ctx, config) {
   const namespaces = servers.map(mcpNamespace);
   const permitted = name => typeof name === 'string'
     && (allowed.has(name) || namespaces.some(namespace => name.startsWith(namespace)));
+  // dsh's grep and glob spawn ripgrep from this trusted process instead of through the SRT
+  // providers, so the kernel never sees what they read; their search root is held to the read
+  // grants here. It resolves against the directory ripgrep runs in, lexically first so a root
+  // outside the grants reveals nothing of the host, then through its symlinks. Ripgrep follows
+  // no symlink below the root.
+  const readable = target => boundary.readable.some(root => contains(root, target));
+  const searchRootDenial = call => {
+    const directory = call.agent === undefined ? process.cwd()
+      : ctx.get('workingDirectory').get(call.agent.session);
+    const root = path.resolve(directory, call.arguments.path ?? '.');
+    return readable(root) && readable(realpathSync(root)) ? undefined
+      : 'This search root is outside the SRT read grants.';
+  };
   ctx.systemPrompt.context({ name: 'deployment:srt', order: 9000, required: true, interpolate: false,
     text: () => `Agent file and shell operations run under SRT. Readable paths: ${JSON.stringify(boundary.readable)}. Writable paths: ${JSON.stringify([...boundary.policy.files.write, boundary.policy.stateDirectory])}. Network destinations: ${JSON.stringify(boundary.policy.network.allow)}. Deployment escalation cannot widen these grants.${servers.length ? ` Callable tools: ${JSON.stringify(boundary.policy.tools.allow)} and the tools of the MCP servers ${JSON.stringify(servers)}; tools of any other server are refused.` : ''}` });
-  ctx.tools.guard(call => permitted(call.name ?? call.tool?.name) ? undefined : 'This tool is outside the deployment SRT tool set.');
+  ctx.tools.guard(call => {
+    const name = call.name ?? call.tool?.name;
+    if (!permitted(name)) return 'This tool is outside the deployment SRT tool set.';
+    return name === 'grep' || name === 'glob' ? searchRootDenial(call) : undefined;
+  });
   ctx.on('dispose', () => boundary.close());
 }
