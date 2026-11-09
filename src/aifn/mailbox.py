@@ -209,20 +209,24 @@ class Mailbox:
         if self.backend is not None:
             yield from self.backend.pending()
             return
-        calls = [
-            Call.model_validate_json(path.read_text())
-            for path in (self.root / REQUESTS).glob("*.json")
-        ]
-        for call in sorted(calls, key=lambda item: (item.issued_at, item.id)):
-            with self._lock(call.id):
-                if self._path(CONCLUSIONS, call.id).exists():
+        # A request and its conclusion share a file name, so a concluded request is never read,
+        # and of the others only the order is kept: a scan holds one request at a time.
+        order = []
+        for path in (self.root / REQUESTS).glob("*.json"):
+            if (self.root / CONCLUSIONS / path.name).exists():
+                continue
+            call = Call.model_validate_json(path.read_bytes())
+            order.append((call.issued_at, call.id))
+        for _, identifier in sorted(order):
+            with self._lock(identifier):
+                if self._path(CONCLUSIONS, identifier).exists():
                     continue
-                path = self._path(CLAIMS, call.id)
+                path = self._path(CLAIMS, identifier)
                 if path.exists() and not Claim.model_validate_json(path.read_text()).expired(
                     datetime.now(UTC)
                 ):
                     continue
-            yield call
+            yield self.call(identifier)
 
     def claim(self, call: CallId, worker: WorkerId, lease: timedelta) -> Claim | None:
         if self.backend is not None:
