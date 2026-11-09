@@ -1,16 +1,16 @@
 {
-  "recorded_at": "2026-11-09T09:40:00+00:00",
+  "recorded_at": "2026-11-09T13:51:18+00:00",
   "platform": "native Linux x86_64 verification",
   "existing_tests": {
     "passed": 19,
     "skipped": 0,
     "platform": "Linux Python3.14; source tree",
-    "seconds": 204.38
+    "seconds": 197.54
   },
   "ruff": "passed",
   "mypy": {
     "status": "passed",
-    "files": 24,
+    "files": 31,
     "platform": "Linux Python3.14; mypy2.4.1"
   },
   "node_syntax": "all package .mjs and bundle .js passed",
@@ -268,6 +268,30 @@
       "its first call comes after 1.2 s instead of 6.0 s"
     ],
     "platform": "Linux Python3.14",
+    "external_model_api_called": false
+  },
+  "read_only_shell": {
+    "status": "passed",
+    "checks": [
+      "a READ_ONLY call under SRT with read_only_shell=True is offered bash, and its shell reads and counts a workspace file",
+      "its shell write to that file fails with Read-only file system and the file is unchanged",
+      "grep and glob declared in tools return their matches in the workspace",
+      "the call submits its answer",
+      "with read_only_shell=False the same call is offered no bash and its shell call answers unknown tool \"bash\""
+    ],
+    "platform": "Linux Node v24.22.1, Python3.14; repository local probe endpoint",
+    "external_model_api_called": false
+  },
+  "search_root_guard": {
+    "status": "passed",
+    "checks": [
+      "before the guard, grep declared in tools read a controller file outside every grant and its content reached the model",
+      "grep and glob are refused for that file by its absolute path, through .. and through a symlink in the workspace",
+      "a grep of the workspace that holds the symlink finds nothing, and glob lists only the regular file",
+      "a grep root inside the grants that does not exist fails with ENOENT",
+      "the controller file's content never reaches the model, and the call submits its answer"
+    ],
+    "platform": "Linux Node v24.22.1, Python3.14; repository local probe endpoint",
     "external_model_api_called": false
   }
 }
