@@ -4,6 +4,10 @@
 不需要重复配置沙箱目录。`sandbox=None` 也表示使用默认策略，不会关闭隔离。
 默认控制状态位于 `dsh_home/aifn-control`，原生日志位于 `dsh_home/trajectories`。
 可用 `sandbox=SrtPolicy(...)` 增加文件和网络授权或定制控制状态目录。
+信任自己 agent 的部署可用 `sandbox=NativeSandbox()` 不启用 SRT：工具交给 DSH 自己的沙箱，
+按调用的 `Access` 只限制文件写入；`FULL_ACCESS` 调用不受任何限制，能读写运行进程能触及的
+所有文件、访问任意网络目标；shell 从运行进程的环境启动，DSH 会去掉其中形似凭据的变量和
+`DSH_*` 变量。
 推荐搭配 `AiFunction(validation="json-schema")`；保留原有 Python 校验模式作为兼容选项。
 
 ## 目录与信任边界

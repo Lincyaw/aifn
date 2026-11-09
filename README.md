@@ -139,9 +139,9 @@ The caller coordinates changes to shared writable directories.
 
 ### Default SRT sandbox
 
-`DeepSeekEngine` always runs file and shell tools through our SRT providers,
-replacing dsh's native sandbox providers. The call's `Workspace.directory` supplies
-the task data grant automatically; no separate sandbox configuration is needed.
+`DeepSeekEngine` runs file and shell tools through our SRT providers unless a deployment
+chooses otherwise, replacing dsh's native sandbox providers. The call's `Workspace.directory`
+supplies the task data grant automatically; no separate sandbox configuration is needed.
 
 - Tools can read the business workspace, this attempt's task files, required runtime
   code and system libraries, and their own scratch directory.
@@ -165,6 +165,14 @@ The default private state is `dsh_home/aifn-control`; native trajectories defaul
 `dsh_home/trajectories`. Keep dsh home, the mailbox, and archive staging outside the
 business workspace. Overlapping grants or failed isolation checks refuse execution;
 there is no fallback to unrestricted tools.
+
+A deployment that trusts its agents with what SRT never grants, such as any network
+destination, declares `DeepSeekEngine(sandbox=NativeSandbox())`. The harness's own sandbox
+then decides by the call's `Access`, on file effects alone: an `Access.FULL_ACCESS` call is
+not confined at all, so its tools read and write wherever the runtime process can and reach
+any network destination, and its shell starts from the runtime's environment, less the
+credential-shaped names and `DSH_*` values the harness scrubs from every child.
+
 Use `private=True` when each call should modify its own copy of the business directory.
 See [the SRT guide](docs/srt-and-atif.md) for custom grants and deployment requirements.
 

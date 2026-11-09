@@ -18,7 +18,7 @@ from aifn.declare import Access
 from aifn.engine import EngineCrashed, EngineTimedOut, Session, Transcript
 from aifn.engines.aihub import is_aihub, session_api_key
 from aifn.patch import Row, layer, write
-from aifn.sandbox import SrtPolicy
+from aifn.sandbox import NativeSandbox, SandboxedLaunch, SrtPolicy
 from aifn.storage import canonical, component
 from aifn.terms import Event
 from aifn.trajectory import TrajectoryArchive
@@ -81,10 +81,11 @@ class DeepSeekEngine:
     that wrapper finally executes is its own business; this field only replaces the argv head.
     """
 
-    sandbox: SrtPolicy | None = None
-    """Optional SRT grants; None derives the policy from the call's workspace.
+    sandbox: SrtPolicy | NativeSandbox | None = None
+    """SRT grants, or `NativeSandbox` to leave the tools to the harness's own sandbox; None
+    derives the SRT policy from the call's workspace.
 
-    SRT always confines file/shell providers. Its default private state lives at
+    SRT confines file/shell providers. Its default private state lives at
     dsh_home/aifn-control; the trusted DSH controller stays outside.
     """
     archive: TrajectoryArchive | None = None
@@ -148,22 +149,24 @@ class DeepSeekEngine:
                 environment["DEEPSEEK_API_KEY"] = session_api_key(api_key, session.id)
         executable = runtime_bin(self.dsh_home) if self.dsh_bin is None else self.dsh_bin.resolve()
         home = self.dsh_home.resolve()
-        sandbox = self.sandbox or SrtPolicy(state_root=home / "aifn-control")
-        private = (trajectory_root, *((self.archive.staging,) if self.archive else ()))
-        try:
-            selected = sandbox.prepare(session, home, private)
-        except subprocess.TimeoutExpired as error:
-            raise EngineTimedOut("SRT isolation self-check timed out") from error
-        except subprocess.CalledProcessError as error:
-            raise EngineCrashed(f"SRT isolation self-check failed: {error.stderr}") from error
-        except (OSError, ValueError, RuntimeError) as error:
-            raise EngineCrashed(f"SRT preparation failed: {error}") from error
+        selected: SandboxedLaunch | None = None
+        if not isinstance(self.sandbox, NativeSandbox):
+            sandbox = self.sandbox or SrtPolicy(state_root=home / "aifn-control")
+            private = (trajectory_root, *((self.archive.staging,) if self.archive else ()))
+            try:
+                selected = sandbox.prepare(session, home, private)
+            except subprocess.TimeoutExpired as error:
+                raise EngineTimedOut("SRT isolation self-check timed out") from error
+            except subprocess.CalledProcessError as error:
+                raise EngineCrashed(f"SRT isolation self-check failed: {error.stderr}") from error
+            except (OSError, ValueError, RuntimeError) as error:
+                raise EngineCrashed(f"SRT preparation failed: {error}") from error
         harness = DeepSeekHarness(
             dsh_home=str(home),
             dsh_bin=str(executable),
             profile=PROFILE,
             patches=(*(str(path.resolve()) for path in self.patches), str(patch.resolve()),
-                     str(selected.patch)),
+                     *(() if selected is None else (str(selected.patch),))),
             cwd=str(session.directory),
             provider=session.model.provider,
             model=session.model.name,
@@ -194,10 +197,11 @@ class DeepSeekEngine:
         archived = None
         try:
             harness.start()
-            try:
-                selected.check_ready()
-            except RuntimeError as error:
-                raise EngineCrashed(str(error)) from error
+            if selected is not None:
+                try:
+                    selected.check_ready()
+                except RuntimeError as error:
+                    raise EngineCrashed(str(error)) from error
             remaining = session.timeout_s - (time.monotonic() - started)
             if remaining <= 0:
                 raise TimeoutError("Session initialization exceeded its time limit")

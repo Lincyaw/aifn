@@ -1,4 +1,5 @@
-"""Keep the trusted DSH controller outside SRT; confine its file/shell providers."""
+"""Keep the trusted DSH controller outside SRT; confine its file/shell providers, unless a
+deployment leaves them to the harness's own sandbox."""
 
 from __future__ import annotations
 
@@ -196,3 +197,16 @@ class SrtPolicy:
         patch = control / "cordis.patch.json"
         atomic_write(patch, json.dumps(rows))
         return SandboxedLaunch(patch=patch, ready=ready, nonce=nonce)
+
+
+@dataclass(frozen=True, slots=True)
+class NativeSandbox:
+    """Leave the agent's tools to the harness's own sandbox instead of SRT.
+
+    For a deployment that trusts its agents with what SRT never grants: SRT reaches only the
+    network destinations it names exactly and takes no wildcard. The harness's own sandbox
+    decides by the call's `Access`, on file effects alone, so a `FULL_ACCESS` call is not
+    confined at all: its tools read and write wherever the runtime process can and reach any
+    network destination, and its shell starts from the runtime's environment, less the
+    credential-shaped names and `DSH_*` values the harness scrubs from every child.
+    """
