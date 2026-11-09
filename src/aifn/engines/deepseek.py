@@ -129,7 +129,13 @@ class DeepSeekEngine:
             trajectory_root, *trajectory_root.parents,
         ):
             raise EngineCrashed("Trajectory directory must be outside the task workspace")
-        rows: list[Row] = [*layer(tools, permission)]
+        home = self.dsh_home.resolve()
+        sandbox = None if isinstance(self.sandbox, NativeSandbox) else (
+            self.sandbox or SrtPolicy(state_root=home / "aifn-control")
+        )
+        rows: list[Row] = [*layer(tools, permission, read_only_shell=(
+            sandbox is not None and sandbox.read_only_shell
+        ))]
         rows.append({"id": "session-persistence-jsonl", "config": {"root": str(trajectory_root)}})
         patch = write(rows, self.dsh_home / PATCHES, session.id)
         if session.files is None:
@@ -148,10 +154,8 @@ class DeepSeekEngine:
             if api_key:
                 environment["DEEPSEEK_API_KEY"] = session_api_key(api_key, session.id)
         executable = runtime_bin(self.dsh_home) if self.dsh_bin is None else self.dsh_bin.resolve()
-        home = self.dsh_home.resolve()
         selected: SandboxedLaunch | None = None
-        if not isinstance(self.sandbox, NativeSandbox):
-            sandbox = self.sandbox or SrtPolicy(state_root=home / "aifn-control")
+        if sandbox is not None:
             private = (trajectory_root, *((self.archive.staging,) if self.archive else ()))
             try:
                 selected = sandbox.prepare(session, home, private)

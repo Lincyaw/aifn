@@ -92,6 +92,14 @@ class SrtPolicy:
     as the mount it goes with. A mounted server is advertised to the model and then refused at
     its first tool call until it is named here.
     """
+    read_only_shell: bool = False
+    """Whether an `Access.READ_ONLY` call keeps `bash` and `pwsh`, which it loses by default.
+
+    Under SRT a shell runs inside the same file grants as the file tools, and a read-only call is
+    granted writes only to its attempt's output, its scratch and `write`, so the kernel keeps its
+    shell from changing the workspace while it reads, searches and counts there. `bash` still has
+    to be in `tools`.
+    """
 
     def __post_init__(self) -> None:
         # Here rather than at prepare(): a declaration missing the result protocol is a mistake

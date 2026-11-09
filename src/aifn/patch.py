@@ -18,7 +18,7 @@ is JSON: an output-token bound is a number, while a mode or a directory is a str
 ROW: Final = "aifn-harness"
 
 
-def layer(tools: Tools, permission: str) -> list[Row]:
+def layer(tools: Tools, permission: str, *, read_only_shell: bool) -> list[Row]:
     permission = Access(permission)
     rows: list[Row] = [
         {"id": ROW, "config": tools},
@@ -35,7 +35,7 @@ def layer(tools: Tools, permission: str) -> list[Row]:
             },
         },
     ]
-    if permission == Access.READ_ONLY:
+    if permission == Access.READ_ONLY and not read_only_shell:
         rows.extend([
             {"id": "tool-bash", "disabled": True},
             {"id": "tool-pwsh", "disabled": True},

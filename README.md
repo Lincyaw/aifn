@@ -146,6 +146,8 @@ supplies the task data grant automatically; no separate sandbox configuration is
 - Tools can read the business workspace, this attempt's task files, required runtime
   code and system libraries, and their own scratch directory.
 - `Access.READ_ONLY` prevents business-file modifications and hides shell tools.
+  `SrtPolicy(read_only_shell=True)` keeps `bash` for such a call: the shell runs under the
+  same grants as the file tools, so it reads and searches the workspace and cannot write there.
 - `Access.WORKSPACE_WRITE` and `Access.FULL_ACCESS` allow business-workspace writes;
   neither expands the SRT boundary. The attempt's output and scratch are also writable.
 - Tool network access is denied by default. Explicit additional file grants or exact

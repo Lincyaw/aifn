@@ -26,6 +26,8 @@
 业务工作目录不能包含控制目录、DSH 安装目录、trajectory 或 spool。任务交换目录也必须
 与业务工作目录分开。仅本次任务的交换目录会授予读权限，其 `output/` 子目录可写。
 `Workspace.access` 决定业务工作目录是否可写；`FULL_ACCESS` 也不能突破 SRT 的目录授权。
+`Access.READ_ONLY` 的调用默认没有 shell 工具。
+`SrtPolicy(read_only_shell=True)` 让这样的调用保留 Bash：它和文件工具受同样的 SRT 授权约束，只能写本次任务的 `output/`、自己的 scratch 和 `write` 授权，所以能读取和搜索业务工作目录，不能修改它。
 
 DSH 控制进程在 SRT 外：它读取配置、访问模型接口、执行 Node 校验并记录 trajectory。
 `ctx.fs` 的所有实际文件操作通过 RPC 交给 SRT 内的常驻文件进程；Bash 每次执行也通过
