@@ -1,11 +1,11 @@
 {
-  "recorded_at": "2026-11-05T03:23:31+00:00",
+  "recorded_at": "2026-11-09T03:42:30+00:00",
   "platform": "native Linux x86_64 verification",
   "existing_tests": {
     "passed": 19,
     "skipped": 0,
-    "platform": "Linux Python3.14; source tree and clean release wheel install",
-    "seconds": 169.31
+    "platform": "Linux Python3.14; source tree",
+    "seconds": 183.56
   },
   "ruff": "passed",
   "mypy": {
@@ -247,5 +247,17 @@
       "an unknown network key is refused"
     ],
     "platform": "installed Zod in the aifn runtime"
+  },
+  "native_sandbox": {
+    "status": "passed",
+    "checks": [
+      "a FULL_ACCESS call under NativeSandbox reads a controller file SRT hides",
+      "it writes outside its workspace",
+      "it reaches https://github.com with HTTP 200",
+      "its shell keeps an ordinary runtime variable and lacks the credential-shaped probe key",
+      "the call submits its answer"
+    ],
+    "platform": "Linux Node v24.22.1, Python3.14; repository local probe endpoint",
+    "external_model_api_called": false
   }
 }

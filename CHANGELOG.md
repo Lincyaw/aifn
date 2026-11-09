@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0 — 2026-11-09
+
+- Let a deployment leave a call's tools to the harness's own sandbox with `DeepSeekEngine(sandbox=NativeSandbox())`. SRT reaches only the network destinations a policy names exactly and takes no wildcard, so a deployment that trusts its agents with any destination, such as one whose agents build and run services, had no way to say so. Under `NativeSandbox` the harness's own sandbox decides by the call's `Access`, on file effects alone: a `FULL_ACCESS` call is not confined at all, its tools read and write wherever the runtime process can and reach any network destination, and its shell starts from the runtime's environment less the credential-shaped names and `DSH_*` values the harness scrubs from every child. `sandbox=None` keeps deriving the default SRT policy.
+
+Minor rather than patch because the surface is new, and compatible on its own: a deployment that does not declare `NativeSandbox` runs every call under SRT exactly as 0.4.1 did.
+
+Validated on Linux 6.6 with Node 24 and Python 3.14: the 19 existing tests, lint and type checks. A real DSH session on the repository's local probe endpoint declared `NativeSandbox` with `Access.FULL_ACCESS`: its shell read a controller file SRT hides, wrote outside the workspace, reached `https://github.com` with HTTP 200 and kept an ordinary runtime variable while the credential-shaped probe key was absent, and the call submitted its answer. No external model API was called.
+
 ## 0.4.1 — 2026-11-06
 
 - Read the recorded events of a call line by line on line feeds alone. Events are written without escaping non-ASCII text, so a tool result that holds U+2028, U+2029 or U+0085 puts that character inside a JSON string, and `str.splitlines()` cut the line there: reading the events of such a call, for its token usage or for a replay, raised `JSONDecodeError` although every line of the file was valid. The mailbox and the replay engine now split the bytes, which break only at line feeds and carriage returns, and JSON escapes both inside strings. Nothing written changes, so every existing mailbox reads as it is.
