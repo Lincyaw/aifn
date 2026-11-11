@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.1 — 2026-11-11
+
+- Encode the lines between the SRT boundary and its filesystem worker so that U+2028 and U+2029 survive them. Messages cross as JSON lines read with `node:readline`, which ends a line at either character, and JSON leaves both unescaped inside strings. A file or a written text holding one arrived cut in two: the line failed to parse, the boundary failed, and every later tool call of the session failed with it. Session records of coding agents carry these characters, for example in pasted documentation; six of 8,910 reader calls of one full read failed this way, twice each. Both sides now write the characters as ` ` and ` `, which JSON reads back unchanged.
+
+Patch, because nothing a deployment declares changes and every message that crossed before crosses the same way.
+
+Validated on Linux 6.6 with Node 24 and Python 3.14: the 19 existing tests, lint and type checks, and the syntax of every module of the boundary. On the repository's local probe endpoint, a READ_ONLY call under SRT whose `read` returns a workspace file holding U+2028 failed that read with `Unterminated string in JSON` on 0.6.0; with this change both reads return the file with its separators intact and the call submits its answer. No external model API was called.
+
+Refresh existing Harness homes with `python -m aifn install --dsh-home PATH` after upgrading, because the boundary sources changed.
+
 ## 0.6.0 — 2026-11-09
 
 - Let a deployment keep the shell of an `Access.READ_ONLY` call under SRT with `SrtPolicy(read_only_shell=True)`. A read-only call lost `bash` and `pwsh`, so an agent reading a session record of tens of thousands of lines could only page through it with `read`: in 1,990 recorded reader sessions of one consumer, every shell call answered `unknown tool "bash"`. Under SRT the shell runs inside the same file grants as the file tools, and a read-only call may write only its attempt's output, its scratch and the policy's `write` grants, so the kernel keeps its shell from changing the workspace. The default policy and `NativeSandbox` keep hiding the shell.

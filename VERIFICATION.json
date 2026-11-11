@@ -1,11 +1,11 @@
 {
-  "recorded_at": "2026-11-09T13:51:18+00:00",
+  "recorded_at": "2026-11-11T09:05:00+00:00",
   "platform": "native Linux x86_64 verification",
   "existing_tests": {
     "passed": 19,
     "skipped": 0,
     "platform": "Linux Python3.14; source tree",
-    "seconds": 197.54
+    "seconds": 205.11
   },
   "ruff": "passed",
   "mypy": {
@@ -290,6 +290,16 @@
       "a grep of the workspace that holds the symlink finds nothing, and glob lists only the regular file",
       "a grep root inside the grants that does not exist fails with ENOENT",
       "the controller file's content never reaches the model, and the call submits its answer"
+    ],
+    "platform": "Linux Node v24.22.1, Python3.14; repository local probe endpoint",
+    "external_model_api_called": false
+  },
+  "srt_line_separators": {
+    "status": "passed",
+    "checks": [
+      "on 0.6.0, a READ_ONLY call under SRT whose read returns a workspace file holding U+2028 fails that read with Unterminated string in JSON, and the call fails",
+      "with the file worker's lines encoded, both reads of that file return it with U+2028 and U+2029 intact, and the call submits its answer",
+      "a message holding U+2028 and U+2029 crosses node:readline as one line and parses back unchanged"
     ],
     "platform": "Linux Node v24.22.1, Python3.14; repository local probe endpoint",
     "external_model_api_called": false
