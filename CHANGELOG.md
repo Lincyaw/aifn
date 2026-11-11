@@ -2,7 +2,7 @@
 
 ## 0.6.1 — 2026-11-11
 
-- Encode the lines between the SRT boundary and its filesystem worker so that U+2028 and U+2029 survive them. Messages cross as JSON lines read with `node:readline`, which ends a line at either character, and JSON leaves both unescaped inside strings. A file or a written text holding one arrived cut in two: the line failed to parse, the boundary failed, and every later tool call of the session failed with it. Session records of coding agents carry these characters, for example in pasted documentation; six of 8,910 reader calls of one full read failed this way, twice each. Both sides now write the characters as ` ` and ` `, which JSON reads back unchanged.
+- Encode the lines between the SRT boundary and its filesystem worker so that U+2028 and U+2029 survive them. Messages cross as JSON lines read with `node:readline`, which ends a line at either character, and JSON leaves both unescaped inside strings. A file or a written text holding one arrived cut in two: the line failed to parse, the boundary failed, and every later tool call of the session failed with it. Session records of coding agents carry these characters, for example in pasted documentation; six of 8,910 reader calls of one full read failed this way, twice each. Both sides now write each of the two characters as its JSON escape sequence, a backslash, `u` and its four hex digits, which JSON reads back unchanged.
 
 Patch, because nothing a deployment declares changes and every message that crossed before crosses the same way.
 
