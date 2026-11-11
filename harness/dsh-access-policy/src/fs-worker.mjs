@@ -1,11 +1,12 @@
 import { createInterface } from 'node:readline';
 import { Context } from '@deepseek-ai/cordis';
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local';
+import { jsonLine } from './jsonl.mjs';
 
 const fs = new LocalFileSystem(new Context(), { cwd: process.cwd(), diffBasisMaxBytes: 10 * 1024 * 1024 });
 const running = new Map();
 const methods = new Set(['resolve', 'stat', 'lstat', 'readText', 'readBytes', 'readByteRange', 'listDir', 'writeText', 'editText']);
-const reply = message => process.stdout.write(JSON.stringify(message) + '\n');
+const reply = message => process.stdout.write(jsonLine(message));
 reply({ ready: true });
 for await (const line of createInterface({ input: process.stdin, crlfDelay: Infinity })) {
   const request = JSON.parse(line);

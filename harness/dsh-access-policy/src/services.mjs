@@ -8,6 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { SandboxManager } from '@anthropic-ai/sandbox-runtime';
 import { FsError } from '@deepseek-ai/dsh-fs';
 import { commandFilesystem, compileSrt, PACKAGE_ROOT, SRT_ROOT, payloadEnvironment, quote, resolveRuntime, transportDirectory } from './backend.mjs';
+import { jsonLine } from './jsonl.mjs';
 import { contains, loadPolicy, mcpNamespace, validatePaths } from './policy.mjs';
 
 export const name = 'aifn-srt-boundary';
@@ -76,13 +77,13 @@ class Boundary {
     signal?.throwIfAborted();
     if (this.failed) return Promise.reject(this.failed);
     const id = ++this.next;
-    const message = JSON.stringify({ id, method, args });
+    const message = jsonLine({ id, method, args });
     if (message.length > 16 * 1024 * 1024) return Promise.reject(new Error('SRT filesystem request exceeds 16 MiB'));
     return new Promise((resolve, reject) => {
-      const abort = () => { this.child.stdin.write(JSON.stringify({ cancel: id }) + '\n'); };
+      const abort = () => { this.child.stdin.write(jsonLine({ cancel: id })); };
       this.pending.set(id, { resolve, reject, dispose: () => signal?.removeEventListener('abort', abort) });
       signal?.addEventListener('abort', abort, { once: true });
-      this.child.stdin.write(message + '\n', error => { if (error) this.fail(error); });
+      this.child.stdin.write(message, error => { if (error) this.fail(error); });
     });
   }
   fail(error) {
