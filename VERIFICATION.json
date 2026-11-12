@@ -1,11 +1,11 @@
 {
-  "recorded_at": "2026-11-11T09:05:00+00:00",
+  "recorded_at": "2026-11-12T07:25:00+00:00",
   "platform": "native Linux x86_64 verification",
   "existing_tests": {
     "passed": 19,
     "skipped": 0,
     "platform": "Linux Python3.14; source tree",
-    "seconds": 205.11
+    "seconds": 230.73
   },
   "ruff": "passed",
   "mypy": {
@@ -303,5 +303,15 @@
     ],
     "platform": "Linux Node v24.22.1, Python3.14; repository local probe endpoint",
     "external_model_api_called": false
+  },
+  "worker_scan": {
+    "status": "passed",
+    "checks": [
+      "on a mailbox of 56,808 requests, 30,745 of them without a conclusion, one pending scan takes 4.1 s before its first call",
+      "on 0.6.1, 12 workers running screening calls of one full read on that mailbox finish 6.0 calls a minute each, with a median attempt of 1.35 s",
+      "with one scan taken until it runs out, 32 workers running the rest of those calls finish 23.5 calls a minute each, with a median attempt of 1.45 s"
+    ],
+    "platform": "Linux Python3.12 consumer, Python3.14 source tree",
+    "external_model_api_called": true
   }
 }
