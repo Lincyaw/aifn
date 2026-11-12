@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import threading
 import time
+from collections.abc import Iterator
 from concurrent.futures import Future
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
@@ -48,9 +49,10 @@ class Worker:
             raise ValueError("budget must be nonnegative")
         self.mailbox.prepare()
         self.engine.prepare()
+        calls = _Scans(self.mailbox)
         completed = 0
         while budget is None or completed < budget:
-            if self.take_one() is None:
+            if self._take(calls) is None:
                 break
             completed += 1
         return completed
@@ -66,9 +68,10 @@ class Worker:
         signal = stop if stop is not None else threading.Event()
         self.mailbox.prepare()
         self.engine.prepare()
+        calls = _Scans(self.mailbox)
         completed = 0
         while not signal.is_set():
-            if self.take_one() is None:
+            if self._take(calls) is None:
                 signal.wait(interval)
             else:
                 completed += 1
@@ -76,7 +79,10 @@ class Worker:
 
     def take_one(self) -> AnyReturn | None:
         self.mailbox.prepare()
-        for call in self.mailbox.pending():
+        return self._take(self.mailbox.pending())
+
+    def _take(self, calls: Iterator[Call]) -> AnyReturn | None:
+        for call in calls:
             function = self.registry.lookup(call.function)
             claim = self.mailbox.claim(call.id, self.id, self.policy.lease)
             if claim is None:
@@ -270,6 +276,36 @@ class Worker:
             return Returned(value=value, submitted_json=receipt.submitted_json)
         except ValidationError as error:
             return Failed(fault=Fault.INVALID, detail=str(error))
+
+
+class _Scans:
+    """Pending calls taken from one scan of the mailbox until it runs out, then from a new scan.
+
+    A scan reads every request without a conclusion before it yields its first call, so a
+    worker that scanned again for each call read the whole mailbox once per call. A scan checks
+    each call's conclusion and claim when it yields it, so a call another worker took meanwhile
+    is skipped. Iteration stops after a scan that yields nothing; the next one scans again.
+    """
+
+    def __init__(self, mailbox: Mailbox) -> None:
+        self.mailbox = mailbox
+        self.scan: Iterator[Call] | None = None
+        self.yielded = False
+
+    def __iter__(self) -> _Scans:
+        return self
+
+    def __next__(self) -> Call:
+        while True:
+            if self.scan is None:
+                self.scan, self.yielded = self.mailbox.pending(), False
+            call = next(self.scan, None)
+            if call is not None:
+                self.yielded = True
+                return call
+            self.scan = None
+            if not self.yielded:
+                raise StopIteration
 
 
 RENEW_RETRY_S = 5.0
