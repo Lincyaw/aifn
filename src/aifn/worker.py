@@ -236,7 +236,7 @@ class Worker:
         )
         instruction += f"The working directory is `{directory}`.\n"
         files.prepare(instruction, dict(call.request), function.returns.model_json_schema(),
-                      corrections.reasons)
+                      corrections.reasons, call.skills)
         tools = bundle(files.root)
         tools["validation"] = function.validation
         prompt = f"Read `{files.root / 'instruction.md'}` and execute the task in that file."
@@ -246,6 +246,7 @@ class Worker:
             model=function.model, tools=tools,
             timeout_s=function.timeout_s, env={}, call=call.id, attempt=index, files=files.root,
             request=call.request, continues=call.continues,
+            skills=files.skills if call.skills else None,
         )
 
     def read(self, call: Call, transcript: Transcript) -> AnyOutcome:

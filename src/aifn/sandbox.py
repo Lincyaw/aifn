@@ -163,6 +163,8 @@ class SrtPolicy:
         writable = [*self.write, session.files / "output"]
         if Access(session.permission) != Access.READ_ONLY:
             writable.append(workspace)
+        # A call that declares skills loads them through `skill`; its bundles lie in the task files.
+        tools = [*self.tools, *(("skill",) if session.skills is not None else ())]
         policy = {
             "version": 1, "cwd": str(workspace), "stateDirectory": str(scratch),
             "files": {
@@ -178,7 +180,7 @@ class SrtPolicy:
                 "localPorts": self.local_ports,
             },
             "environment": {"inherit": []},
-            "tools": {"allow": list(self.tools), "mcpServers": list(self.mcp_servers)},
+            "tools": {"allow": tools, "mcpServers": list(self.mcp_servers)},
         }
         policy_file = control / "policy.json"
         atomic_write(policy_file, json.dumps(policy))

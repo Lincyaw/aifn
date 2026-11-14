@@ -13,6 +13,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, TypeAdapter
 
 from aifn.call import AnyOutcome, AnyReturn, Attempt, Call, Fault, Return, Returned
 from aifn.schema import construct_model, schema_hash
+from aifn.skills import write_bundles
 from aifn.storage import atomic_write, canonical, component, readable_json
 from aifn.terms import CallId, Event, JsonObject, WorkerId
 
@@ -132,6 +133,7 @@ class Mailbox:
             task = self.task_path(call.id)
             atomic_write(task / "input.json", readable_json(dict(call.request)))
             atomic_write(task / "instruction.md", call.instruction)
+            write_bundles(call.skills, task / "skills")
             atomic_write(path, call.model_dump_json())
             return True
 

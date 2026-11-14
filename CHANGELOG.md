@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Let an `AiFunction` declare skill bundles with `skills=(path, ...)`, each a directory with a `SKILL.md` whose frontmatter names it and describes it. The declaration checks each bundle, because dsh skips a skill it cannot use with only a warning in its own log. The bundles' text files are copied into the task at submission, alongside the instruction, and take part in the identity that deduplicates submissions. A call with skills mounts dsh's filesystem skill provider over the attempt's `skills/` directory alone, without default roots or watching, enables the `skill` tool and allows it in the SRT tool policy; calls without skills keep the tool disabled. `python-frontmatter` is a new dependency for reading the frontmatter.
+
+Validated on Linux 6.6 with Python 3.14: the 19 existing tests, lint and type checks. One real call through the SRT harness on a consumer's model service, with one skill whose body held a code word absent from the instruction, received a catalog listing only that skill, called `skill` with its name and returned the code word.
+
 ## 0.6.2 — 2026-11-12
 
 - Take the calls of one pending scan until it runs out. `Worker.work()` and `Worker.serve()` scanned the mailbox again for every call they took, and a scan reads every request without a conclusion before it yields its first call, so each call cost a read of the whole mailbox: on a mailbox of 56,808 requests, 30,745 of them without a conclusion, one scan took 4.1 s before its first call, and 12 workers whose attempts took a median of 1.35 s finished 6.0 calls a minute each. A worker now takes calls from one scan until it runs out, then scans again; `work()` returns, and `serve()` waits, after a scan that yields nothing. A scan still checks each call's conclusion and claim when it yields it, so a call another worker took meanwhile is skipped, and a call issued after a scan began is taken from the next scan. `Worker.take_one()` scans once for its call, as before.

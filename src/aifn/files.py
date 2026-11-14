@@ -5,6 +5,7 @@ import os
 import secrets
 import stat
 import threading
+from collections.abc import Mapping
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -14,6 +15,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, TypeAdapter, ValidationError
 
 from aifn.call import AnyOutcome, Refused, Returned
+from aifn.skills import write_bundles
 from aifn.storage import atomic_write, canonical, readable_json
 
 
@@ -33,10 +35,18 @@ class TaskFiles:
     def accepted(self) -> Path:
         return self.root / "accepted.json"
 
-    def prepare(self, instruction: str, request: object, schema: object, rejected: object) -> None:
+    @property
+    def skills(self) -> Path:
+        return self.root / "skills"
+
+    def prepare(
+        self, instruction: str, request: object, schema: object, rejected: object,
+        skills: Mapping[str, str],
+    ) -> None:
         self.root.mkdir(parents=True, exist_ok=False)
         self.output.parent.mkdir()
         atomic_write(self.root / "instruction.md", instruction)
+        write_bundles(skills, self.skills)
         atomic_write(self.root / "input.json", readable_json(request))
         atomic_write(self.root / "output.schema.json", readable_json(schema))
         atomic_write(self.root / "feedback.json", readable_json(rejected))

@@ -75,6 +75,8 @@ class Call(BaseModel):
     """A different sample creates a new task for otherwise identical inputs."""
     workspace: Workspace | None = None
     instruction: str = ""
+    skills: dict[str, str] = Field(default_factory=dict)
+    """The function's skill bundles as read at submission, by path below the skills root."""
     continues: SessionId | None = None
     """The session this call continues, where its work follows an earlier call's.
 

@@ -17,7 +17,7 @@ from aifn.bundle import require_bundle, runtime_bin
 from aifn.declare import Access
 from aifn.engine import EngineCrashed, EngineTimedOut, Session, Transcript
 from aifn.engines.aihub import is_aihub, session_api_key
-from aifn.patch import Row, layer, write
+from aifn.patch import Row, layer, skill_layer, write
 from aifn.sandbox import NativeSandbox, SandboxedLaunch, SrtPolicy
 from aifn.storage import canonical, component
 from aifn.terms import Event
@@ -137,6 +137,8 @@ class DeepSeekEngine:
             sandbox is not None and sandbox.read_only_shell
         ))]
         rows.append({"id": "session-persistence-jsonl", "config": {"root": str(trajectory_root)}})
+        if session.skills is not None:
+            rows.extend(skill_layer(session.skills))
         patch = write(rows, self.dsh_home / PATCHES, session.id)
         if session.files is None:
             raise ValueError("Session has no task directory")

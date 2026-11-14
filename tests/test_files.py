@@ -23,7 +23,7 @@ class Answer(BaseModel):
 
 def test_file_feedback_corrections_and_submission(tmp_path: Path) -> None:
     files = TaskFiles(tmp_path / "task")
-    files.prepare("Read input.json", {}, Answer.model_json_schema(), [])
+    files.prepare("Read input.json", {}, Answer.model_json_schema(), [], {})
     with OutputService(files, Answer) as service:
         def write(content: str) -> None:
             files.output.write_text(content)

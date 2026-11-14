@@ -43,6 +43,23 @@ def layer(tools: Tools, permission: str, *, read_only_shell: bool) -> list[Row]:
     return rows
 
 
+def skill_layer(root: Path) -> list[Row]:
+    """Offer the agent the skill bundles under `root` and nothing else.
+
+    The base profile mounts the filesystem provider over the project and user skill directories
+    and watches them, and aifn's bundle hides the `skill` tool; a call that declares skills gets
+    the tool back with the provider held to its own copied bundles, so what it loads is what was
+    submitted.
+    """
+    return [
+        {"id": "skill-filesystem", "config": {
+            "includeDefaultRoots": False, "customSkillDirs": [str(root.resolve())], "watch": False,
+        }},
+        {"id": "skill-office", "disabled": True},
+        {"id": "tool-skill", "disabled": False},
+    ]
+
+
 def write(rows: Sequence[Row], directory: Path, session: SessionId) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{component(session)}.patch.json"

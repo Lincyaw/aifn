@@ -12,6 +12,7 @@ from typing import Any, Literal
 from filelock import FileLock
 from pydantic import BaseModel
 
+from aifn.skills import check_bundle, read_bundles
 from aifn.storage import component
 from aifn.terms import CallId, FunctionName
 
@@ -136,6 +137,14 @@ class AiFunction[I: BaseModel, O: BaseModel]:
     validation: Literal["pydantic", "json-schema"] = "pydantic"
     """JSON Schema mode constructs the returned model without Python validators."""
 
+    skills: tuple[Path, ...] = ()
+    """Skill bundles the agent can discover and load, each a directory holding a `SKILL.md`.
+
+    A skill carries a method the instruction would otherwise repeat for every function that uses
+    it, and the agent loads it when the task matches its description. The bundles are read at
+    submission like the instruction, so they are part of what makes two submissions the same task.
+    """
+
     def __post_init__(self) -> None:
         if self.validation not in ("pydantic", "json-schema"):
             raise ValueError("validation must be pydantic or json-schema")
@@ -143,10 +152,20 @@ class AiFunction[I: BaseModel, O: BaseModel]:
             raise ValueError("Function name must match [A-Za-z0-9_-]{1,57}")
         if not math.isfinite(self.timeout_s) or self.timeout_s <= 0 or self.attempts < 1:
             raise ValueError("timeout_s and attempts must be positive")
+        skills = tuple(path.expanduser().resolve() for path in self.skills)
+        for path in skills:
+            check_bundle(path)
+        if len({path.name for path in skills}) != len(skills):
+            raise ValueError("Skill bundle names must be unique")
+        object.__setattr__(self, "skills", skills)
 
     def instructions(self) -> str:
         """Read the Markdown instructions when the caller submits the task."""
         return self.instruction.read_text(encoding="utf-8") if self.instruction is not None else ""
+
+    def skill_files(self) -> dict[str, str]:
+        """Read the skill bundles when the caller submits the task."""
+        return read_bundles(self.skills)
 
 
 @dataclass(frozen=True, slots=True)

@@ -41,6 +41,8 @@ class Session:
     An engine that cannot reopen a session refuses a session that carries this, and one that can
     uses it instead of opening a new conversation.
     """
+    skills: Path | None = None
+    """The directory of the skill bundles the agent may load; None offers no skill tool."""
 
 
 @dataclass(frozen=True, slots=True)

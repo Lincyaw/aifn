@@ -118,7 +118,7 @@ class Stage[I: BaseModel, O: BaseModel]:
             function=self.function.name,
             request=request.model_dump(mode="json", by_alias=True),
             issued_at=datetime.now(UTC), sample=sample, workspace=selected,
-            instruction=instruction, continues=continues,
+            instruction=instruction, skills=self.function.skill_files(), continues=continues,
         )
         return self.mailbox.find(candidate) or candidate
 
