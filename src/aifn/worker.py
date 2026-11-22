@@ -160,10 +160,12 @@ class Worker:
             return completed, None
         transcript: Transcript
         try:
-            if session.files is None or function.validation == "json-schema":
+            if session.files is None:
                 transcript = self.engine.run(session)
             else:
-                with OutputService(TaskFiles(session.files), function.returns) as service:
+                with OutputService(
+                    TaskFiles(session.files), function.returns, validation=function.validation,
+                ) as service:
                     session = replace(session, env={
                         "AIFN_OUTPUT_ENDPOINT": service.endpoint,
                         "AIFN_OUTPUT_TOKEN": service.token,
@@ -224,8 +226,8 @@ class Worker:
             f"Read input from `{files.root / 'input.json'}`.\n"
             f"Read the required JSON Schema from `{files.root / 'output.schema.json'}`.\n"
             f"Read previous attempt feedback from `{files.root / 'feedback.json'}`.\n"
-            f"Write your JSON answer to `{files.output}` using write.\n"
-            "Use edit or str_replace_editor for targeted corrections.\n"
+            f"Write your JSON answer to `{files.output}` using the available file tools.\n"
+            "Use the available editor for targeted corrections.\n"
             "Read existing files before editing them. Use absolute paths with file tools.\n"
             "The output directory is writable. Business workspace permissions still apply.\n"
             "Use validate_output to check the file and correct all reported errors.\n"

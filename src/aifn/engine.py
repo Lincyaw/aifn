@@ -42,7 +42,7 @@ class Session:
     uses it instead of opening a new conversation.
     """
     skills: Path | None = None
-    """The directory of the skill bundles the agent may load; None offers no skill tool."""
+    """The directory of the skill bundles the agent may load; None offers no skills."""
 
 
 @dataclass(frozen=True, slots=True)

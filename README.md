@@ -329,6 +329,22 @@ mailboxes and workers for different engines, since each worker has one engine.
 Keep thresholds and business decisions in `Link.adapt`, where they can be evaluated
 against your data; low confidence is a returned judgment, not an execution failure.
 
+## Codex harness
+
+`CodexEngine` runs the same file tasks through a local Codex agent.
+Install the optional dependency, authenticate a private Codex home and run the example:
+
+```sh
+uv sync --extra codex
+export CODEX_HOME="$HOME/.aifn-codex"
+uv run python -c 'import subprocess; from codex_cli_bin import bundled_codex_path; subprocess.run([str(bundled_codex_path()), "login"], check=True)'
+uv run python -m examples.codex
+```
+
+The example reads a read-only workspace and returns `{"timeout_s": 30}` through the normal mailbox.
+The extra installs the exact native Codex runtime used by the adapter.
+See [Codex setup and behavior](docs/codex.md) for API-key login, custom providers, continuation and permissions.
+
 ## Development checks
 
 ```sh

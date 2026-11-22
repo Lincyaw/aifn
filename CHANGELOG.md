@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Add `CodexEngine` as a file-task harness through the Codex App Server protocol.
+  The `codex` extra installs the pinned native CLI runtime and Python JSON Schema format validators.
+  Calls use the existing output validation service, persist native thread mappings for continuation and apply current workspace and skill grants on each attempt.
+  Codex tool processes receive a minimal environment, no tool network access and separate read-only task and writable output directories.
+  Successful submission interrupts the turn and preserves the accepted receipt through shutdown failures.
+  The shared output service now supports schema defaults and format checks and uses a shorter shutdown poll interval for fast calls.
+  See `docs/codex.md` and `examples/codex.py` for setup and behavior.
+
+Codex validation on Linux with Python 3.14: 19 existing tests, lint and type checks passed.
+Six real model calls covered business-validator correction, skills, changed workspace grants, continuation with a newly declared skill, JSON Schema submission, refusal and the documented example.
+Nine protocol fault scenarios passed, and independent review approved the adapter and follow-up changes.
+The output service's median lifecycle over four samples fell from 0.5011 s to 0.0506 s.
+
 - Let an `AiFunction` declare skill bundles with `skills=(path, ...)`, each a directory with a `SKILL.md` whose frontmatter names it and describes it. The declaration checks each bundle, because dsh skips a skill it cannot use with only a warning in its own log. The bundles' text files are copied into the task at submission, alongside the instruction, and take part in the identity that deduplicates submissions. A call with skills mounts dsh's filesystem skill provider over the attempt's `skills/` directory alone, without default roots or watching, enables the `skill` tool and allows it in the SRT tool policy; calls without skills keep the tool disabled. `python-frontmatter` is a new dependency for reading the frontmatter.
 
 Validated on Linux 6.6 with Python 3.14: the 19 existing tests, lint and type checks. One real call through the SRT harness on a consumer's model service, with one skill whose body held a code word absent from the instruction, received a catalog listing only that skill, called `skill` with its name and returned the code word.

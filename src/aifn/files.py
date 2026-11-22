@@ -1,20 +1,23 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import secrets
 import stat
 import threading
 from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Literal
+from typing import Any, Literal, Never
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, TypeAdapter, ValidationError
 
 from aifn.call import AnyOutcome, Refused, Returned
+from aifn.schema import construct_model, schema_hash
 from aifn.skills import write_bundles
 from aifn.storage import atomic_write, canonical, readable_json
 
@@ -126,17 +129,23 @@ def _validate_json(
 
 
 class OutputService:
-    """Validate files in the worker using the full Pydantic model held by that process."""
+    """Validate output files in the trusted worker and persist accepted snapshots."""
 
-    def __init__(self, files: TaskFiles, model: type[BaseModel]) -> None:
+    def __init__(
+        self, files: TaskFiles, model: type[BaseModel],
+        *, validation: Literal["pydantic", "json-schema"] = "pydantic",
+    ) -> None:
         self.files = files
         self.model = model
+        self.validation = validation
         self.token = secrets.token_urlsafe(32)
         self.lock = threading.Lock()
         self.error: BaseException | None = None
         self.server = _Server(("127.0.0.1", 0), _Handler)
         self.server.service = self
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread = threading.Thread(
+            target=self.server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True,
+        )
 
     @property
     def endpoint(self) -> str:
@@ -180,14 +189,24 @@ class OutputService:
                                     file=str(path))
             except OSError:
                 return error_report("file_read", "Read a regular output file of at most 16 MiB.")
-            report, value = _validate_json(content, model)
-            if value is None or request.action == "validate":
+            if self.validation == "json-schema":
+                report, payload = _validate_schema(content, model)
+            else:
+                report, value = _validate_json(content, model)
+                payload = (
+                    value.model_dump(mode="json", by_alias=True) if value is not None else None
+                )
+            if not report["valid"] or request.action == "validate":
                 return report
-            payload = value.model_dump(mode="json", by_alias=True)
             receipt = Receipt(
                 status="refused" if request.action == "refuse" else "returned",
                 value=payload,
-                submitted_json=content.decode("utf-8"),
+                submitted_json=(
+                    canonical(payload) if self.validation == "json-schema"
+                    else content.decode("utf-8")
+                ),
+                validation=self.validation,
+                schema_sha256=schema_hash(model) if self.validation == "json-schema" else None,
             )
             atomic_write(self.files.accepted, receipt.model_dump_json())
             return {"valid": True, "submitted": True}
@@ -196,12 +215,66 @@ class OutputService:
         if not self.files.accepted.exists():
             return None
         receipt = Receipt.model_validate_json(self.files.accepted.read_bytes())
+        if receipt.validation == "json-schema":
+            if receipt.status == "refused":
+                return Refused(reason=RefusalFile.model_validate(receipt.value).reason)
+            return Returned(
+                value=construct_model(self.model, receipt.value),
+                submitted_json=receipt.submitted_json, validation="json-schema",
+                schema_sha256=receipt.schema_sha256,
+            )
         if receipt.status == "refused":
             return Refused(reason=RefusalFile.model_validate(receipt.value).reason)
         value = self.model.model_validate_json(
             receipt.submitted_json or canonical(receipt.value)
         )
         return Returned(value=value, submitted_json=receipt.submitted_json)
+
+
+def _validate_schema(
+    content: bytes, model: type[BaseModel],
+) -> tuple[dict[str, JsonValue], JsonValue]:
+    # DSH can validate in its Node plugin. Other harnesses use this trusted endpoint;
+    # loading aifn or running DSH does not require the optional Python validator.
+    from jsonschema import Draft202012Validator, validators
+
+    try:
+        value: JsonValue = json.loads(
+            content, parse_constant=_reject_constant, parse_float=_finite_float,
+        )
+    except (ValueError, UnicodeDecodeError):
+        return error_report("json_syntax", "Write valid UTF-8 JSON."), None
+
+    def defaults(validator: Any, properties: Any, instance: Any, schema: Any) -> Any:
+        if isinstance(instance, dict):
+            for name, definition in properties.items():
+                if "default" in definition:
+                    instance.setdefault(name, deepcopy(definition["default"]))
+        yield from Draft202012Validator.VALIDATORS["properties"](
+            validator, properties, instance, schema,
+        )
+
+    validator = validators.extend(Draft202012Validator, {"properties": defaults})(
+        model.model_json_schema(), format_checker=Draft202012Validator.FORMAT_CHECKER,
+    )
+    errors: list[JsonValue] = []
+    for error in validator.iter_errors(value):
+        pointer = "/" + "/".join(str(part).replace("~", "~0").replace("/", "~1")
+                                 for part in error.absolute_path)
+        errors.append({"path": pointer, "code": str(error.validator),
+                       "message": error.message, "actual": error.instance})
+    return {"valid": not errors, "errors": errors}, value
+
+
+def _reject_constant(value: str) -> Never:
+    raise ValueError(f"{value} is not a JSON number")
+
+
+def _finite_float(value: str) -> float:
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError("JSON numbers must have a finite representation")
+    return number
 
 
 class _Server(ThreadingHTTPServer):

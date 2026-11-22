@@ -1,4 +1,4 @@
-"""Construct JSON-native Pydantic objects after the Node plugin's schema check."""
+"""Construct JSON-native Pydantic objects after JSON Schema validation."""
 
 from __future__ import annotations
 
@@ -125,8 +125,10 @@ def _construct(annotation: Any, value: Any) -> Any:
     annotation = _annotation(annotation)
     origin, arguments = get_origin(annotation), get_args(annotation)
     if origin is Literal:
-        return next((item for item in arguments if isinstance(item, Enum) and item.value == value),
-                    value)
+        return next((item for item in arguments if (
+            (scalar := item.value if isinstance(item, Enum) else item) == value
+            and isinstance(scalar, bool) == isinstance(value, bool)
+        )), value)
     if isinstance(annotation, type) and issubclass(annotation, BaseModel):
         return construct_model(annotation, value)
     if isinstance(annotation, type) and issubclass(annotation, Enum):
@@ -145,4 +147,6 @@ def _construct(annotation: Any, value: Any) -> Any:
         if len(arguments) == 2 and arguments[1] is Ellipsis:
             return tuple(_construct(arguments[0], item) for item in value)
         return tuple(_construct(kind, item) for kind, item in zip(arguments, value, strict=True))
+    if annotation is int:
+        return int(value)
     return float(value) if annotation is float else value

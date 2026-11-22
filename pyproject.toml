@@ -20,6 +20,7 @@ deepseek = [
     "deepseek-harness-sdk==0.2.1rc2",
 ]
 trajectory = ["dsh-trajectory==0.1.1"]
+codex = ["jsonschema[format-nongpl]>=4.26,<5", "openai-codex-cli-bin==0.169.0"]
 
 [tool.uv.sources]
 dsh-trajectory = { path = "packages/dsh-trajectory" }
@@ -84,6 +85,10 @@ files = ["src", "tests", "examples"]
 # read it.
 [[tool.mypy.overrides]]
 module = ["deepseek_harness.*", "deepseek_harness_runtime.*", "dsh_trajectory.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["jsonschema.*", "codex_cli_bin.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

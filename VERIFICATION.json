@@ -313,5 +313,74 @@
     ],
     "platform": "Linux Python3.12 consumer, Python3.14 source tree",
     "external_model_api_called": true
+  },
+  "codex_adapter": {
+    "recorded_at": "2026-11-22T04:25:50.663864+00:00",
+    "platform": "native Linux x86_64, Python3.14",
+    "runtime": "openai-codex-cli-bin 0.169.0; exact native executable grants",
+    "existing_tests": {
+      "passed": 19,
+      "skipped": 0,
+      "seconds": 206.77,
+      "command": ".venv/bin/pytest -q"
+    },
+    "lint": "passed",
+    "types": "passed; 35 source files",
+    "independent_review": "APPROVE; primary and narrow follow-up reviews",
+    "live_model": "gpt-6.1-sol; 6 real calls",
+    "live_results": [
+      "Pydantic business-validator correction and task skill: count7",
+      "continued context, new read-only workspace, JSON Schema: count8",
+      "bundled runtime, writable workspace without skills: count11",
+      "resume with newly declared skill: count37",
+      "JSON Schema refusal: unavailable",
+      "documented examples.codex: timeout_s30"
+    ],
+    "native_sandbox": [
+      "read-only business writes denied",
+      "task instruction writes denied",
+      "accepted receipt writes denied",
+      "private controller reads denied",
+      "symlink escape reads denied",
+      "output writes allowed",
+      "tool network denied; local server received0 requests"
+    ],
+    "fault_consumer": "9 scenarios passed: validation correction, schema-only validator bypass, refusal, missing submission, model failure, timeout, malformed protocol, accepted-then-disconnected, accepted-then-hung",
+    "boundary_probes": [
+      "nonblocking protocol-write deadline",
+      "HTTP validation deadline",
+      "closed stdin and inherited stdout cleanup",
+      "dotted MCP names disabled without launching server",
+      "NaN/Infinity/-Infinity/overflow rejected",
+      "nested schema defaults expanded and validated",
+      "integer and boolean literal reconstruction",
+      "date-time and URI formats enforced"
+    ],
+    "output_service_median_seconds": {
+      "baseline": 0.5011,
+      "final": 0.0506,
+      "samples_each": 4
+    },
+    "native_final_preflight": "passed after final browser/computer/image-generation/memory/goal disables; intentionally stopped before model execution",
+    "evidence": {
+      "live_initial": "/tmp/aifn-codex-consumer-xobg5ch0",
+      "live_bundled": "/tmp/aifn-codex-latest-qc_updn5",
+      "faults": "/tmp/aifn-codex-faults-oiq27wri",
+      "kernel": "/tmp/aifn-codex-kernel-m91dt5a6",
+      "native_preflight": "/tmp/aifn-codex-preflight-jukrb7qp",
+      "wheel_faults": "/tmp/aifn-codex-faults-5ywgqzrp"
+    },
+    "limits": [
+      "Linux only; CLI version0.169.0",
+      "Codex native journals and mailbox events retained; DSH ATIF converter not applicable",
+      "Model.max_tokens is not a hard limit for Codex"
+    ],
+    "wheel": {
+      "build": "source distribution and wheel built from VCS-selected clean source snapshot",
+      "isolated_install": "aifn[codex] only; DeepSeek SDK and dsh-trajectory absent",
+      "prepare": "passed using pinned bundled native runtime",
+      "fault_consumer": "same9 scenarios passed against installed wheel under isolated Python",
+      "sha256": "eb39fbf66915d1fd0785969207d9f840c9e4875ad1b609a0cb70c2542ecf33b1"
+    }
   }
 }
