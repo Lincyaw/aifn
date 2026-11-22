@@ -28,6 +28,8 @@ uv run python -c 'import os, subprocess; from codex_cli_bin import bundled_codex
 `codex_home` contains credentials, native Codex journals and aifn session mappings.
 Keep it outside the business workspace and task directories.
 The engine does not modify your home configuration or copy authentication from another home.
+To reuse an installed Codex subscription, pass its existing home and executable, for example `codex_home=Path.home() / ".codex", codex_bin="codex"`.
+No additional login is needed when that home is already authenticated.
 
 ## Configure a worker
 
@@ -82,8 +84,12 @@ The adapter configures Codex's named filesystem permissions for every call:
 | Other mailbox tasks, controller credentials and native journals | Outside tool grants |
 | Tool network access | Denied |
 
-`Access.FULL_ACCESS` retains this boundary, as it does with the default DSH SRT policy.
+With the default policy, `Access.FULL_ACCESS` retains this boundary, as it does with the default DSH SRT policy.
 Shell tools remain available for read-only calls and run with a minimal environment.
+To use Codex's native permissions instead, configure `CodexEngine(..., sandbox=NativeSandbox())` with `NativeSandbox` imported from `aifn`.
+The call's `Access` then selects Codex's sandbox mode directly.
+An `Access.FULL_ACCESS` call can use every file, network destination and container runtime available to the worker.
+Native shell tools inherit the deployment environment with credential-shaped variables excluded, and use the attempt's scratch directory for temporary files.
 Home MCP servers, apps, plugins, hooks, browser tools, computer use, image generation, memories, project instructions and host skill discovery are disabled for these function calls.
 The function's snapshotted skills are catalogued in the prompt and loaded through `skill(name)`.
 The loader remains registered across a conversation and serves only the current attempt's declared skills.
@@ -119,6 +125,6 @@ With no Codex archive configured, the mailbox keeps full events even when `retai
 Refresh the environment with `uv sync --extra codex` if the bundled binary is missing.
 Authenticate the home passed to `CodexEngine`, and select a model available to that account.
 The business workspace, task directory and Codex home must be separate directories.
-Sandbox failures return execution failures; the adapter never retries a tool outside its declared grants.
+Sandbox failures return execution failures; the adapter never retries a tool outside the configured policy.
 
 The protocol and provider configuration follow the [Codex App Server documentation](https://learn.chatgpt.com/docs/app-server).

@@ -20,6 +20,7 @@ from aifn.declare import Access
 from aifn.engine import EngineCrashed, EngineTimedOut, Session, Transcript
 from aifn.engines.codex_rpc import AppServer
 from aifn.files import FileRequest, error_report
+from aifn.sandbox import NativeSandbox
 from aifn.storage import atomic_write, canonical, component
 from aifn.terms import Event
 
@@ -60,7 +61,8 @@ class CodexEngine:
 
     codex_home is deployment-owned authentication and durable session state, outside
     every business workspace and task directory. Log in there with CODEX_HOME set.
-    Native tool processes receive a minimal environment without controller credentials.
+    Scoped tool processes receive a minimal environment without controller credentials.
+    NativeSandbox delegates permissions to Codex and inherits the deployment environment.
     """
 
     codex_home: Path
@@ -68,6 +70,8 @@ class CodexEngine:
     env: Mapping[str, str] = field(default_factory=dict, repr=False)
     model_providers: Mapping[str, Any] = field(default_factory=dict)
     """Optional Codex Responses-compatible provider definitions, keyed by provider id."""
+    sandbox: NativeSandbox | None = None
+    """Leave tools to Codex's Access-based native sandbox when explicitly configured."""
 
     def prepare(self) -> None:
         self._check_runtime(10)
@@ -162,6 +166,18 @@ class CodexEngine:
         }
         if self.model_providers:
             config["model_providers"] = dict(self.model_providers)
+        if isinstance(self.sandbox, NativeSandbox):
+            del config["permissions.aifn"]
+            del config["default_permissions"]
+            config["sandbox_mode"] = access.value
+            config["sandbox_workspace_write.writable_roots"] = [
+                str(files / "output"), str(scratch),
+            ]
+            config["shell_environment_policy"] = {
+                "inherit": "all",
+                "exclude": ["*KEY*", "*TOKEN*", "*SECRET*", "*PASSWORD*", "DSH_*"],
+                "set": {"TMPDIR": str(scratch)},
+            }
         environment = {**os.environ, **self.env, "CODEX_HOME": str(home)}
         command = [str(executable), "app-server"]
         for key, value in config.items():
@@ -183,9 +199,13 @@ class CodexEngine:
             params: dict[str, Any] = {
                 "cwd": str(workspace), "model": session.model.name,
                 "modelProvider": session.model.provider, "approvalPolicy": "never",
-                "permissions": "aifn", "config": overrides,
+                "config": overrides,
                 "developerInstructions": active.instructions(),
             }
+            if isinstance(self.sandbox, NativeSandbox):
+                params["sandbox"] = access.value
+            else:
+                params["permissions"] = "aifn"
             if session.continues is None:
                 params["dynamicTools"] = active.tools()
                 result = client.request("thread/start", params)
