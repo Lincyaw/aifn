@@ -200,7 +200,7 @@ class CodexEngine:
                 "cwd": str(workspace), "model": session.model.name,
                 "modelProvider": session.model.provider, "approvalPolicy": "never",
                 "config": overrides,
-                "developerInstructions": active.instructions(),
+                "developerInstructions": active.instructions(self.sandbox),
             }
             if isinstance(self.sandbox, NativeSandbox):
                 params["sandbox"] = access.value
@@ -258,11 +258,17 @@ class _Attempt:
                 skill = frontmatter.load(str(path))
                 self.skills[path.parent.name] = (str(skill["description"]), path.read_text())
 
-    def instructions(self) -> str:
+    def instructions(self, sandbox: NativeSandbox | None) -> str:
+        boundary = (
+            f"Tools use Codex's native {self.session.permission} permissions and the "
+            "deployment environment. "
+            if isinstance(sandbox, NativeSandbox) else
+            "Only the current business workspace, task files, runtime and scratch are "
+            "accessible. Network access is disabled. "
+        )
         text = (
             "Execute the aifn task in the supplied instruction file. Use native shell and editor "
-            "tools to read and write files. Only the current business workspace, task files, "
-            "runtime and scratch are accessible. Network access is disabled. "
+            f"tools to read and write files. {boundary}"
             "Call validate_output, submit_output and refuse_output by their exact tool names. "
             "A final text response does not submit an answer. Stop when submission succeeds."
         )
